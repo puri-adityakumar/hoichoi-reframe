@@ -101,3 +101,10 @@ Plain-language record of decisions and research, newest at the bottom.
 - Core model switched to **GLM-5.3-Flash** for the orchestrator and all subagents (subagents inherit). The BYOK/complexity-routing setup is no longer needed.
 - Verified: Vercel CLI already logged in (`wonderboyxtreme-4811`), Blaxel CLI already logged in. No account actions left from the user.
 - One watch item: OpenRouter's balance endpoint reports $0 even though paid-model calls succeed. GMI serves the same model as fallback, so a sudden OpenRouter rejection cannot stop the pipeline.
+
+## 18. Phases 0-2 done (autonomous run)
+- Phase 0: venv (mediapipe 0.10.21 — 1.0.1 aborts on macOS), face model, spec.json, 3 test clips cut; clip_c picked (two dominant faces, mouth std 0.161/0.119).
+- Phase 1: Sarvam batch diarization kept (30 s in ~5 s, 2 speakers, 6 turns; gotcha: Azure upload needs x-ms-blob-type header). Speaker fusion + One Euro camera path + sendcmd single-pass render: clip_c 95.4% and clip_a 95.8% speaker-on-screen (target 85%), fallbacks engaged correctly on shot/reverse-shot.
+- Phase 2: `python -m reframe` end-to-end. Video: 5 outputs, 92.3% speaker-on-screen, 30/33 validations pass (3 honest fails: 190 s reel > Instagram 90 s/100 MB, 16:9 copy > 200 MB — flagged, not hidden). Image: 4 outputs, 20/20 pass. VLM used 5 calls total.
+- Phase 2b (Neon publish): fixed three real bugs — `_one()` int()-casting uuid ids, `outputs_kind_check` missing 'copy' kind, DB connection dying across long S3 uploads (added rollback+reconnect+retry). Both masters published: image job 9ff0f8c1, video job e4b32ef3. ~1.6 GB of orphaned objects from failed attempts deleted (multipart objects need exact-key deletes, prefix delete was not enough). Live bucket ~1.2 GB of 5 GB.
+- Verification is programmatic this session (the session model has no vision input): face-box math, validator rows, DB checks. Human stills review pending Aditya's return (work/render/stills/, work/outputs/image/candidates_sheet.jpg).

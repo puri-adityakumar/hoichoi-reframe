@@ -35,20 +35,50 @@ def connect() -> psycopg.Connection:
     return _conn
 
 
-def _one(sql: str, params: tuple) -> int:
-    conn = connect()
-    with conn.cursor() as cur:
-        cur.execute(sql, params)
-        (val,) = cur.fetchone()
-    conn.commit()
-    return int(val)
+def _reset_conn() -> None:
+    global _conn
+    if _conn is not None:
+        try:
+            _conn.rollback()
+        except Exception:
+            pass
+        try:
+            _conn.close()
+        except Exception:
+            pass
+        _conn = None
+
+
+def _run_with_retry(fn) -> Any:
+    """Long S3 uploads can outlive Neon's idle connection; retry once on a fresh one."""
+    last: Optional[Exception] = None
+    for attempt in range(2):
+        try:
+            return fn()
+        except psycopg.Error as exc:
+            last = exc
+            _reset_conn()
+    raise last  # type: ignore[misc]
+
+
+def _one(sql: str, params: tuple) -> Any:
+    def go() -> Any:
+        conn = connect()
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            (val,) = cur.fetchone()
+        conn.commit()
+        return val
+    return _run_with_retry(go)
 
 
 def _exec(sql: str, params: tuple) -> None:
-    conn = connect()
-    with conn.cursor() as cur:
-        cur.execute(sql, params)
-    conn.commit()
+    def go() -> None:
+        conn = connect()
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+        conn.commit()
+    _run_with_retry(go)
 
 
 def upsert_master(title: str, kind: str, s3_key: str, size: int, w: int, h: int,
@@ -63,63 +93,72 @@ def upsert_master(title: str, kind: str, s3_key: str, size: int, w: int, h: int,
     )
 
 
-def set_master_s3_key(master_id: int, s3_key: str) -> None:
-    _exec("UPDATE masters SET s3_key = %s WHERE id = %s", (s3_key, master_id))
+def set_master_s3_key(master_id: Any, s3_key: str) -> None:
+    _exec("UPDATE masters SET s3_key = %s WHERE id = %s::uuid", (s3_key, str(master_id)))
 
 
-def create_job(master_id: int) -> int:
+def create_job(master_id: Any) -> Any:
     return _one(
-        "INSERT INTO jobs (master_id, status, stage, progress) VALUES (%s, 'running', 'start', 0) RETURNING id",
-        (master_id,),
+        "INSERT INTO jobs (master_id, status, stage, progress) VALUES (%s::uuid, 'running', 'start', 0) RETURNING id",
+        (str(master_id),),
     )
 
 
-def finish_job(job_id: int, status: str, stage: str, progress: int,
+def finish_job(job_id: Any, status: str, stage: str, progress: int,
                error: Optional[str] = None) -> None:
     _exec(
         """UPDATE jobs SET status=%s, stage=%s, progress=%s, error=%s, finished_at=now()
-           WHERE id=%s""",
-        (status, stage, progress, error, job_id),
+           WHERE id=%s::uuid""",
+        (status, stage, progress, error, str(job_id)),
     )
 
 
-def insert_output(job_id: int, master_id: int, platform: str, ratio: str, kind: str,
+def insert_output(job_id: Any, master_id: Any, platform: str, ratio: str, kind: str,
                   s3_key: str, preview_key: Optional[str],
-                  speaker_pct: Optional[float]) -> int:
+                  speaker_pct: Optional[float]) -> Any:
     return _one(
         """
         INSERT INTO outputs (job_id, master_id, platform, ratio, kind, s3_key, preview_key,
                              speaker_on_screen_pct)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
-        (job_id, master_id, platform, ratio, kind, s3_key, preview_key, speaker_pct),
+        (str(job_id), str(master_id), platform, ratio, kind, s3_key, preview_key, speaker_pct),
     )
 
 
-def insert_validations(output_id: int, rows: list[dict[str, Any]]) -> None:
+def insert_validations(output_id: Any, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
-    conn = connect()
-    with conn.cursor() as cur:
-        for r in rows:
-            cur.execute(
-                "INSERT INTO validations (output_id, rule, expected, actual, passed) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (output_id, r["rule"], r["expected"], r["actual"], bool(r["passed"])),
-            )
-    conn.commit()
+
+    def go() -> None:
+        conn = connect()
+        with conn.cursor() as cur:
+            for r in rows:
+                cur.execute(
+                    "INSERT INTO validations (output_id, rule, expected, actual, passed) "
+                    "VALUES (%s::uuid, %s, %s, %s, %s)",
+                    (str(output_id), r["rule"], r["expected"], r["actual"], bool(r["passed"])),
+                )
+        conn.commit()
+
+    _run_with_retry(go)
 
 
-def insert_decisions(job_id: int, output_id: Optional[int], rows: list[dict[str, Any]]) -> None:
+def insert_decisions(job_id: Any, output_id: Optional[Any], rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
-    conn = connect()
-    with conn.cursor() as cur:
-        for r in rows:
-            cur.execute(
-                "INSERT INTO decisions (job_id, output_id, stage, choice, reason, confidence) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (job_id, output_id, r["stage"], r["choice"], r["reason"], r.get("confidence")),
-            )
-    conn.commit()
+
+    def go() -> None:
+        conn = connect()
+        with conn.cursor() as cur:
+            for r in rows:
+                cur.execute(
+                    "INSERT INTO decisions (job_id, output_id, stage, choice, reason, confidence) "
+                    "VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s)",
+                    (str(job_id), str(output_id) if output_id else None,
+                     r["stage"], r["choice"], r["reason"], r.get("confidence")),
+                )
+        conn.commit()
+
+    _run_with_retry(go)
