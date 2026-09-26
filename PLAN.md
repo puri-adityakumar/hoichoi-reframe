@@ -77,6 +77,7 @@ Never cut: speaker-following 9:16, spec validation, traceability to master, live
 ## 3. Budgets and model strategy
 
 ### Resource budgets (hard limits)
+These are **app runtime budgets** — spent by the deployed worker/web app, not by the Droid session. Development (orchestrator + subagents) runs on the Factory plan and never touches these keys.
 | Resource | Budget | Discipline |
 |---|---|---|
 | Neon | **Free tier only**: 5 GB object storage, 5 GB/month egress, 0.5 GB DB, 100 CU-hours | Small previews (about 200-500 KB) in the UI, full files as downloads only, delete temp/proxy objects after each job, compute already capped at 0.25-1 CU with auto-suspend. No paid upgrade. |
