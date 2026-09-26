@@ -76,3 +76,14 @@ Plain-language record of decisions and research, newest at the bottom.
 ## 12. Plan and repo
 - `P4/` is its own git repo, since it becomes the public submission. Secrets, assets and work files are git-ignored.
 - Phases and timings are in `PLAN.md`. Key rule: never cut speaker-following, spec validation, traceability, or the live link.
+
+## 13. Neon set up
+- Project `p4-reframe` in AWS Singapore, Postgres 17, compute capped at 0.25–1 CU with auto-suspend (Neon balance is only $5, so everything stays lean).
+- Private bucket `p4-media`; S3 credential `p4-app` with read+write scope. Endpoint is branch-scoped and needs path-style URLs.
+- Database tables created: masters, jobs, outputs, validations, decisions.
+- All values saved to `.env.local` (git-ignored).
+
+## 14. Orchestrator + subagent approach
+- Aditya asked for a multi-agent setup to save credits: Opus orchestrates and reviews; cheap fast models (GLM-5.3-Flash / DeepSeek via BYOK) do the implementation.
+- Created two project droids in `.factory/droids/`: `p4-builder` (implements one bounded task + self-validates) and `p4-checker` (read-only review against handbook rules).
+- Aditya maps Light/Medium complexity to the cheap models in Settings → Subagents; the orchestrator then delegates with `complexity: light/medium`.
