@@ -11,6 +11,29 @@ from worker.reframe.config import load_config
 
 _client = None
 
+# Without an explicit ContentType, S3 stores every object as
+# binary/octet-stream, which browsers refuse to render in <video>/<img> — the
+# asset played as a black 0:00 player. Set it from the extension at upload so
+# objects are correct at the source rather than patched on read.
+_CONTENT_TYPES = {
+    "mp4": "video/mp4",
+    "m4v": "video/mp4",
+    "mov": "video/quicktime",
+    "webm": "video/webm",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "gif": "image/gif",
+    "json": "application/json",
+    "txt": "text/plain",
+}
+
+
+def content_type_for(key: str) -> str:
+    ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+    return _CONTENT_TYPES.get(ext, "application/octet-stream")
+
 
 def _s3_client():
     global _client
@@ -36,7 +59,8 @@ def _bucket() -> str:
 
 def upload_file(path: str | Path, key: str) -> str:
     s3 = _s3_client()
-    s3.upload_file(str(path), _bucket(), key)
+    s3.upload_file(str(path), _bucket(), key,
+                   ExtraArgs={"ContentType": content_type_for(key)})
     return key
 
 

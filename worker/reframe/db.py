@@ -166,6 +166,29 @@ def set_output_preview_key(output_id: Any, preview_key: str) -> None:
           (preview_key, str(output_id)))
 
 
+def all_servable_keys() -> list[str]:
+    """Every s3_key / preview_key the web can serve, de-duplicated.
+
+    Used by scripts/backfill_content_types.py to repair stored Content-Type
+    on objects that predate upload_file setting one.
+    """
+    def go() -> list[str]:
+        conn = connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT s3_key FROM masters WHERE s3_key IS NOT NULL
+                   UNION
+                   SELECT s3_key FROM outputs WHERE s3_key IS NOT NULL
+                   UNION
+                   SELECT preview_key FROM outputs WHERE preview_key IS NOT NULL"""
+            )
+            rows = [r[0] for r in cur.fetchall()]
+        conn.commit()
+        return sorted(set(rows))
+
+    return _run_with_retry(go)
+
+
 def insert_validations(output_id: Any, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return

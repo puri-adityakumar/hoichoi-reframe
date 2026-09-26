@@ -17,6 +17,11 @@ export async function GET(req: Request) {
   if (!rawOk && !key.startsWith("masters/") && !key.startsWith("outputs/")) {
     return NextResponse.json({ error: "forbidden key" }, { status: 403 });
   }
+  // No ContentType override here on purpose: this endpoint points the browser
+  // straight at object storage, and Neon ignores `response-content-type` on a
+  // presigned GET, so the header it returns is whatever the object was stored
+  // with. The object must therefore be written with the right ContentType --
+  // see storage.upload_file and scripts/backfill_content_types.py.
   try {
     const url = await getSignedUrl(
       s3(),
