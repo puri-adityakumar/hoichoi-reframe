@@ -96,6 +96,6 @@ No PyTorch. Target about 1–2 minutes per 60 s clip on CPU.
 
 ## Risks
 - Sarvam Batch diarization is async; latency unknown → measure in spike; fallback is mouth-motion only.
-- Neon Free egress is 5 GB/month shared: serve small previews, move to the Launch plan (pay-as-you-go) before submission.
+- Neon stays on the **free tier**: 5 GB storage and 5 GB/month egress are the hard caps. Serve small previews, downloads on demand only, delete temp objects after each job.
 - Cold starts on Blaxel; keep a precomputed sample job in the library so the demo is instant.
 - Given video may not contain a clean 2-person dialogue → prepare our own test clips.

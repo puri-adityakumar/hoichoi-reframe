@@ -90,3 +90,9 @@ Plain-language record of decisions and research, newest at the bottom.
 
 ## 15. Repo name
 - Chosen: **hoichoi-reframe** (explicit hackathon tie-in). GitHub repo stays private/local until submission.
+
+## 16. Real budgets, revised model plan
+- Actual budgets: Neon **free tier** (no paid upgrade — the earlier Launch-plan idea is dropped), OpenRouter $5, GMI $5, Blaxel 170 credits, Sarvam about Rs 100.
+- Opus credits are exhausted, so the orchestrator is now **Kimi K3** (this session), with strict token discipline: short exact briefs, subagents do the file reading and writing.
+- Implementation, review and testing all run on **DeepSeek v4.1-Flash** and **GLM-5.3-Flash** (BYOK) through the `p4-builder` and `p4-checker` droids.
+- PLAN.md section 3 now has the full budget table with per-service discipline rules (small previews, capped VLM retries, 8 GB Blaxel worker, local Docker test before deploy).

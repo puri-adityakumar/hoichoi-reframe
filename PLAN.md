@@ -63,7 +63,7 @@ Every output keeps `master_id`, so it always traces back (handbook disqualifier)
 | 2 | **Worker core (local CLI)** | 17:30 → 19:45 | `python -m reframe <file>` makes every output + validation report + decision log for both given assets |
 | 3 | **Cloud worker** | 19:45 → 20:45 | Docker image deployed as Blaxel job; reads/writes Neon S3 + Postgres; triggered by HTTP |
 | 4 | **Web app** | 20:45 → 22:45 | Upload (presigned multipart) → job progress → library → output detail with spec checks + decisions, deployed on Vercel |
-| 5 | **Demo polish** | 22:45 → 23:30 | Given assets precomputed in library; side-by-side "centre crop vs ours"; README; Neon on Launch plan |
+| 5 | **Demo polish** | 22:45 → 23:30 | Given assets precomputed in library; side-by-side "centre crop vs ours"; README; verify Neon free-tier usage (storage + egress) with headroom |
 | 6 | **Video + submit** | 23:30 → 00:00 | <5 min video recorded; repo made public; form submitted |
 
 ### Cut list if behind (in order)
@@ -74,7 +74,33 @@ Every output keeps `master_id`, so it always traces back (handbook disqualifier)
 
 Never cut: speaker-following 9:16, spec validation, traceability to master, live demo link.
 
-## 3. How the work gets done: orchestrator + cheap subagents\n\nCredits are limited, so the expensive model does the least possible.\n\n**Roles**\n- **Orchestrator (this session, Opus):** plans, splits work into small well-specified tasks, fires subagents, reviews every diff, runs validation, owns all architecture decisions, demo story and anything visual/risky. Never writes boilerplate itself.\n- **`p4-builder` droid (GLM-5.3-Flash / DeepSeek via BYOK):** implements one bounded task at a time, given exact files, interfaces and acceptance checks. Runs its own validation and reports back.\n- **`p4-checker` droid (same cheap model):** read-only review of each builder output against handbook rules before the orchestrator even looks.\n- **`explorer` (built-in, lightest):** quick lookups in the repo so the orchestrator's context stays lean.\n\n**Loop per task:** orchestrator writes a precise brief → `p4-builder` implements + self-validates → `p4-checker` reviews → orchestrator re-runs the key check and integrates. Two or three independent tasks can run in parallel in the background (e.g. image path while video path is built).\n\n**Setup needed from Aditya (one time, in `/settings` → Subagents):**\n1. Add GLM-5.3-Flash and DeepSeek as BYOK custom models (OpenRouter key is already in `.env.local`; Factory BYOK needs it in Settings → Models).\n2. Map complexity routing: **Light → GLM-5.3-Flash, Medium → GLM-5.3-Flash, Heavy → inherit (stays on Opus).**\n3. Subagent autonomy: **Medium** (builders need to edit files and run tests).\n\nThe droid files live in `.factory/droids/` and are committed to the repo.\n\n## 4. Checkpoints
+## 3. Budgets and model strategy
+
+### Resource budgets (hard limits)
+| Resource | Budget | Discipline |
+|---|---|---|
+| Neon | **Free tier only**: 5 GB object storage, 5 GB/month egress, 0.5 GB DB, 100 CU-hours | Small previews (about 200-500 KB) in the UI, full files as downloads only, delete temp/proxy objects after each job, compute already capped at 0.25-1 CU with auto-suspend. No paid upgrade. |
+| OpenRouter | $5 | VLM critic on top-3 image crops only, VLM still picker on about 8 frames only, short JSON prompts, cap output tokens. About $0.0002 per image call, so the risk is loops, not single calls: max 1 retry per asset. |
+| GMI | $5 | Fallback for the same VLM calls if OpenRouter fails or is slow. |
+| Blaxel | 170 credits | One worker job definition, 8 GB (4-core) size to start, scale to 16 GB only if the spike shows we need it. Test the Docker image locally before every deploy. |
+| Sarvam | about Rs 100 | Diarization spike on one 30 s clip only; if latency or cost looks bad, mouth-motion only. |
+
+### Model roles (who thinks, who types)
+- **Orchestrator: Kimi K3 (this session).** Plans, splits work into precise briefs, fires subagents, reviews diffs, owns architecture, demo story and all judgement calls. Token discipline: briefs are short and exact, file reading happens in subagents, the orchestrator re-reads only what it is about to edit.
+- **Implementers / reviewers / testers: DeepSeek v4.1-Flash and GLM-5.3-Flash (BYOK).** All code writing, test runs and review happen in subagents on these models.
+  - `p4-builder` droid: implements one bounded task + self-validates.
+  - `p4-checker` droid: read-only review against handbook rules.
+  - built-in `explorer`: quick repo lookups so orchestrator context stays lean.
+- Loop per task: orchestrator writes a precise brief, builder implements and self-validates, checker reviews, orchestrator re-runs the one key check and integrates. Independent tasks run in parallel in the background.
+
+**Setup needed from Aditya (one time, in Settings):**
+1. Add DeepSeek v4.1-Flash and GLM-5.3-Flash as BYOK custom models (Settings, Models; keys are already in `.env.local`).
+2. Settings, Subagents: map **Light = GLM-5.3-Flash, Medium = DeepSeek v4.1-Flash, Heavy = inherit (Kimi K3)**.
+3. Subagent autonomy: **Medium** (builders must edit files and run tests).
+
+The droid files live in `.factory/droids/` and are committed to the repo.
+
+## 4. Checkpoints
 - **17:30**: spike works? If not, switch to mouth-only + stacked fallback immediately.
 - **20:45**: worker running in cloud? If not, freeze features and fix deploy.
 - **22:45**: feature freeze. Only bug fixes and demo after this.

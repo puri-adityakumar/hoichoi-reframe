@@ -7,7 +7,7 @@ Resolve these before building. Tick when done.
 - [x] `OPENROUTER_API_KEY`: works; `z-ai/glm-5.3-flash` vision call correctly found the two women (~$0.0002/call). **Account shows 0 purchased credits**: add ~$5 or calls may start failing.
 - [x] `GMI_API_KEY`: works; model id `zai-org/GLM-5.3-Flash`, vision call correct. Used as VLM fallback.
 - [x] `BL_WORKSPACE` + `BL_API_KEY`: workspace `workspace-x` is ready, region `ap-southeast-1`, jobs API returns 200. Still to do: update CLI (0.1.105 → 0.1.117).
-- [x] Neon project `p4-reframe` in AWS Singapore: `DATABASE_URL`, S3 endpoint/keys, private bucket `p4-media` — all in `.env.local`. DB schema applied (masters, jobs, outputs, validations, decisions). Compute capped at 0.25–1 CU, auto-suspend on. **Only $5 on Neon: keep storage + egress lean (previews small, delete temp objects).**
+- [x] Neon project `p4-reframe` in AWS Singapore: `DATABASE_URL`, S3 endpoint/keys, private bucket `p4-media` — all in `.env.local`. DB schema applied (masters, jobs, outputs, validations, decisions). Compute capped at 0.25–1 CU, auto-suspend on. **Neon is free tier only: keep storage + egress lean (previews small, delete temp objects).**
 - [ ] Vercel account linked (CLI already installed).
 - [x] Repo name: **hoichoi-reframe**. Local git repo in `P4/` (no remote yet; create public repo at submission time).
 - [ ] (Optional) `HF_TOKEN`: only if we fall back to pyannote locally. Probably not needed.
@@ -16,7 +16,7 @@ Resolve these before building. Tick when done.
 - [x] **Where big files live → Neon** (Postgres + S3-compatible Object Storage in one project).
   - Why: 5 GiB max per object, 5 GB object storage on Free, presigned URLs for direct browser upload (skips Vercel's 4.5 MB body limit), multipart upload for >100 MB, Singapore region, upload triggers.
   - Rejected: Supabase free (50 MB per file), Appwrite free (50 MB per file; 5 GB only on Pro $25/mo).
-  - Watch: Free plan egress is **5 GB/month shared** across DB + storage. One master (282 MB) plus outputs viewed by several judges can exceed it. Plan: serve small H.264 previews in the UI, full files on download only, and switch to **Launch plan** (pay-as-you-go, no minimum, 500 GB egress) before submission.
+  - Watch: Neon is on the **free tier** (no paid upgrade). Egress is **5 GB/month shared** across DB + storage. One master (282 MB) plus outputs viewed by several judges can exceed it. Plan: serve small H.264 previews in the UI, full files on download only, and keep total stored data well under 5 GB.
   - No built-in realtime → UI polls job status every 2 s (fine for this app).
 - [x] **Outputs → everything the handbook lists**: 16:9, 1:1, 9:16, 4:5, a still pulled from the video, and a speaker-tracked vertical reel. Every asset validated against `spec.json`.
 
