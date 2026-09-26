@@ -87,3 +87,6 @@ Plain-language record of decisions and research, newest at the bottom.
 - Aditya asked for a multi-agent setup to save credits: Opus orchestrates and reviews; cheap fast models (GLM-5.3-Flash / DeepSeek via BYOK) do the implementation.
 - Created two project droids in `.factory/droids/`: `p4-builder` (implements one bounded task + self-validates) and `p4-checker` (read-only review against handbook rules).
 - Aditya maps Light/Medium complexity to the cheap models in Settings → Subagents; the orchestrator then delegates with `complexity: light/medium`.
+
+## 15. Repo name
+- Chosen: **hoichoi-reframe** (explicit hackathon tie-in). GitHub repo stays private/local until submission.

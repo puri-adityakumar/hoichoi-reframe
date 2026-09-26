@@ -9,7 +9,7 @@ Resolve these before building. Tick when done.
 - [x] `BL_WORKSPACE` + `BL_API_KEY`: workspace `workspace-x` is ready, region `ap-southeast-1`, jobs API returns 200. Still to do: update CLI (0.1.105 → 0.1.117).
 - [x] Neon project `p4-reframe` in AWS Singapore: `DATABASE_URL`, S3 endpoint/keys, private bucket `p4-media` — all in `.env.local`. DB schema applied (masters, jobs, outputs, validations, decisions). Compute capped at 0.25–1 CU, auto-suspend on. **Only $5 on Neon: keep storage + egress lean (previews small, delete temp objects).**
 - [ ] Vercel account linked (CLI already installed).
-- [ ] GitHub repo name for the public submission. Local git repo created in `P4/` (no remote yet).
+- [x] Repo name: **hoichoi-reframe**. Local git repo in `P4/` (no remote yet; create public repo at submission time).
 - [ ] (Optional) `HF_TOKEN`: only if we fall back to pyannote locally. Probably not needed.
 
 ## B. Decisions (need a yes/no)
