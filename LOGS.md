@@ -96,3 +96,8 @@ Plain-language record of decisions and research, newest at the bottom.
 - Opus credits are exhausted, so the orchestrator is now **Kimi K3** (this session), with strict token discipline: short exact briefs, subagents do the file reading and writing.
 - Implementation, review and testing all run on **DeepSeek v4.1-Flash** and **GLM-5.3-Flash** (BYOK) through the `p4-builder` and `p4-checker` droids.
 - PLAN.md section 3 now has the full budget table with per-service discipline rules (small previews, capped VLM retries, 8 GB Blaxel worker, local Docker test before deploy).
+
+## 17. Model switch resolves the last setup item
+- Core model switched to **GLM-5.3-Flash** for the orchestrator and all subagents (subagents inherit). The BYOK/complexity-routing setup is no longer needed.
+- Verified: Vercel CLI already logged in (`wonderboyxtreme-4811`), Blaxel CLI already logged in. No account actions left from the user.
+- One watch item: OpenRouter's balance endpoint reports $0 even though paid-model calls succeed. GMI serves the same model as fallback, so a sudden OpenRouter rejection cannot stop the pipeline.

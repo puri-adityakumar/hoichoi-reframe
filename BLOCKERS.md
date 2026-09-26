@@ -4,11 +4,11 @@ Resolve these before building. Tick when done.
 
 ## A. Keys and accounts (need from Aditya)
 - [x] `SARVAM_API_KEY`: works (tested). ₹100 credits.
-- [x] `OPENROUTER_API_KEY`: works; `z-ai/glm-5.3-flash` vision call correctly found the two women (~$0.0002/call). **Account shows 0 purchased credits**: add ~$5 or calls may start failing.
+- [x] `OPENROUTER_API_KEY`: works; `z-ai/glm-5.3-flash` vision call correct (~$0.0002/call). Balance endpoint reports $0 even though calls succeed; GMI is the fallback if OpenRouter starts rejecting.
 - [x] `GMI_API_KEY`: works; model id `zai-org/GLM-5.3-Flash`, vision call correct. Used as VLM fallback.
-- [x] `BL_WORKSPACE` + `BL_API_KEY`: workspace `workspace-x` is ready, region `ap-southeast-1`, jobs API returns 200. Still to do: update CLI (0.1.105 → 0.1.117).
+- [x] `BL_WORKSPACE` + `BL_API_KEY`: workspace `workspace-x` ready in `ap-southeast-1`, jobs API 200. CLI logged in; updating 0.1.105 → 0.1.117 optional.
 - [x] Neon project `p4-reframe` in AWS Singapore: `DATABASE_URL`, S3 endpoint/keys, private bucket `p4-media` — all in `.env.local`. DB schema applied (masters, jobs, outputs, validations, decisions). Compute capped at 0.25–1 CU, auto-suspend on. **Neon is free tier only: keep storage + egress lean (previews small, delete temp objects).**
-- [ ] Vercel account linked (CLI already installed).
+- [x] Vercel account linked: CLI logged in as `wonderboyxtreme-4811`.
 - [x] Repo name: **hoichoi-reframe**. Local git repo in `P4/` (no remote yet; create public repo at submission time).
 - [ ] (Optional) `HF_TOKEN`: only if we fall back to pyannote locally. Probably not needed.
 
@@ -23,7 +23,7 @@ Resolve these before building. Tick when done.
 ## C. Local environment
 - [ ] Python 3.11 venv with `mediapipe opencv-python-headless scenedetect numpy pydantic httpx`.
 - [ ] Download MediaPipe `face_landmarker.task` model file.
-- [ ] Install Neon CLI (`npm i -g neonctl`) and log in.
+- [x] Neon CLI not needed: the Neon MCP connection covers project, SQL and storage operations.
 - [x] ffmpeg/ffprobe 8.1.1, uv, node, pnpm, docker, vercel, gh present.
 
 ## D. Test material

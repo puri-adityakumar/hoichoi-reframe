@@ -86,17 +86,12 @@ Never cut: speaker-following 9:16, spec validation, traceability to master, live
 | Sarvam | about Rs 100 | Diarization spike on one 30 s clip only; if latency or cost looks bad, mouth-motion only. |
 
 ### Model roles (who thinks, who types)
-- **Orchestrator: Kimi K3 (this session).** Plans, splits work into precise briefs, fires subagents, reviews diffs, owns architecture, demo story and all judgement calls. Token discipline: briefs are short and exact, file reading happens in subagents, the orchestrator re-reads only what it is about to edit.
-- **Implementers / reviewers / testers: DeepSeek v4.1-Flash and GLM-5.3-Flash (BYOK).** All code writing, test runs and review happen in subagents on these models.
+- **Core model: GLM-5.3-Flash everywhere** (user switched the session model). Orchestrator and subagents all run on it; subagents inherit automatically, so no BYOK/routing setup is needed.
+- **Orchestrator (this session):** plans, splits work into precise briefs, fires subagents, reviews diffs, owns architecture, demo story and all judgement calls. Token discipline: briefs are short and exact, file reading happens in subagents, the orchestrator re-reads only what it is about to edit.
   - `p4-builder` droid: implements one bounded task + self-validates.
   - `p4-checker` droid: read-only review against handbook rules.
   - built-in `explorer`: quick repo lookups so orchestrator context stays lean.
 - Loop per task: orchestrator writes a precise brief, builder implements and self-validates, checker reviews, orchestrator re-runs the one key check and integrates. Independent tasks run in parallel in the background.
-
-**Setup needed from Aditya (one time, in Settings):**
-1. Add DeepSeek v4.1-Flash and GLM-5.3-Flash as BYOK custom models (Settings, Models; keys are already in `.env.local`).
-2. Settings, Subagents: map **Light = GLM-5.3-Flash, Medium = DeepSeek v4.1-Flash, Heavy = inherit (Kimi K3)**.
-3. Subagent autonomy: **Medium** (builders must edit files and run tests).
 
 The droid files live in `.factory/droids/` and are committed to the repo.
 
