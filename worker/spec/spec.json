@@ -1,0 +1,103 @@
+{
+  "version": "1.0",
+  "platforms": {
+    "instagram_reel": {
+      "label": "Instagram Reels / YouTube Shorts",
+      "kind": "video",
+      "ratio": "9:16",
+      "width": 1080,
+      "height": 1920,
+      "max_duration_sec": 90,
+      "max_size_mb": 100,
+      "codec": "h264",
+      "container": "mp4",
+      "min_fps": 24
+    },
+    "instagram_feed": {
+      "label": "Instagram Feed",
+      "kind": "video",
+      "ratio": "4:5",
+      "width": 1080,
+      "height": 1350,
+      "max_duration_sec": 600,
+      "max_size_mb": 100,
+      "codec": "h264",
+      "container": "mp4",
+      "min_fps": 24
+    },
+    "youtube_square": {
+      "label": "Square social post",
+      "kind": "video",
+      "ratio": "1:1",
+      "width": 1080,
+      "height": 1080,
+      "max_duration_sec": 600,
+      "max_size_mb": 100,
+      "codec": "h264",
+      "container": "mp4",
+      "min_fps": 24
+    },
+    "youtube_landscape": {
+      "label": "YouTube landscape",
+      "kind": "video",
+      "ratio": "16:9",
+      "width": 1920,
+      "height": 1080,
+      "max_duration_sec": 900,
+      "max_size_mb": 200,
+      "codec": "h264",
+      "container": "mp4",
+      "min_fps": 24
+    },
+    "youtube_thumbnail": {
+      "label": "YouTube thumbnail (still from video)",
+      "kind": "image",
+      "ratio": "16:9",
+      "width": 1280,
+      "height": 720,
+      "max_size_mb": 2,
+      "codec": "jpeg",
+      "container": "jpg"
+    },
+    "feed_image": {
+      "label": "Feed image",
+      "kind": "image",
+      "ratio": "4:5",
+      "width": 1080,
+      "height": 1350,
+      "max_size_mb": 8,
+      "codec": "jpeg",
+      "container": "jpg"
+    },
+    "story_image": {
+      "label": "Story image",
+      "kind": "image",
+      "ratio": "9:16",
+      "width": 1080,
+      "height": 1920,
+      "max_size_mb": 8,
+      "codec": "jpeg",
+      "container": "jpg"
+    },
+    "square_image": {
+      "label": "Square image",
+      "kind": "image",
+      "ratio": "1:1",
+      "width": 1080,
+      "height": 1080,
+      "max_size_mb": 8,
+      "codec": "jpeg",
+      "container": "jpg"
+    },
+    "landscape_image": {
+      "label": "Landscape image",
+      "kind": "image",
+      "ratio": "16:9",
+      "width": 1920,
+      "height": 1080,
+      "max_size_mb": 8,
+      "codec": "jpeg",
+      "container": "jpg"
+    }
+  }
+}

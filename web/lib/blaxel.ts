@@ -13,11 +13,13 @@ export async function triggerReframeWorker(jobId: string, masterId: string): Pro
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          // Blaxel executions API requires X-Blaxel-Authorization (not Authorization)
+          "X-Blaxel-Authorization": `Bearer ${apiKey}`,
           "X-Blaxel-Workspace": workspace,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ inputs: { job_id: jobId, master_id: masterId } }),
+        // tasks array: each task's fields arrive as handler kwargs in the container
+        body: JSON.stringify({ tasks: [{ job_id: jobId, master_id: masterId }] }),
         signal: AbortSignal.timeout(10_000),
       }
     );

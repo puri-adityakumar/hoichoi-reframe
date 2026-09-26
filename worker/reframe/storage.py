@@ -23,7 +23,8 @@ def _s3_client():
         region_name=os.environ.get("S3_REGION", ""),
         aws_access_key_id=os.environ["S3_ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ["S3_SECRET_ACCESS_KEY"],
-        config=BotoConfig(s3={"addressing_style": "path"}),
+        config=BotoConfig(s3={"addressing_style": "path"},
+                          signature_version="s3v4"),  # Neon rejects SigV2 presigns
     )
     return _client
 

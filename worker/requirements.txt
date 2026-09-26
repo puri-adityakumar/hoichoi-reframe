@@ -1,0 +1,9 @@
+mediapipe==0.10.21
+numpy
+scenedetect
+pydantic
+httpx
+pillow
+boto3
+psycopg[binary]
+blaxel

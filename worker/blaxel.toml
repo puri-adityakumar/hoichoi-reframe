@@ -1,0 +1,7 @@
+type = "job"
+name = "reframe-worker"
+
+[runtime]
+memory = 4096
+timeout = 1800
+maxRetries = 0

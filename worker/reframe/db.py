@@ -113,6 +113,34 @@ def finish_job(job_id: Any, status: str, stage: str, progress: int,
     )
 
 
+def set_job(job_id: Any, status: str, stage: str, progress: int,
+            error: Optional[str] = None) -> None:
+    _exec(
+        """UPDATE jobs SET status=%s, stage=%s, progress=%s, error=%s
+           WHERE id=%s::uuid""",
+        (status, stage, progress, error, str(job_id)),
+    )
+
+
+def get_master(master_id: Any) -> dict[str, Any]:
+    def go() -> dict[str, Any]:
+        conn = connect()
+        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            cur.execute(
+                """SELECT id::text AS id, title, kind, s3_key, size_bytes, width,
+                          height, duration_sec, fps
+                   FROM masters WHERE id = %s::uuid""",
+                (str(master_id),),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        if row is None:
+            raise RuntimeError(f"master {master_id} not found")
+        return dict(row)
+
+    return _run_with_retry(go)
+
+
 def insert_output(job_id: Any, master_id: Any, platform: str, ratio: str, kind: str,
                   s3_key: str, preview_key: Optional[str],
                   speaker_pct: Optional[float]) -> Any:
