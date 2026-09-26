@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P4 · Creative Reformatting Engine — QA &amp; Findings Report</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#131823; --panel2:#0f141d; --line:#232b3a;
+    --ink:#e6edf7; --dim:#93a1b8; --faint:#5d6b83;
+    --red:#ff5f6b; --amber:#ffb454; --green:#3ddc97; --blue:#5aa9ff; --violet:#b48cff;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px 120px}
+  code,.mono{font-family:var(--mono);font-size:.88em}
+  code{background:#1a2130;padding:1px 5px;border-radius:4px;color:#cfe0ff;
+    word-break:break-word}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header{padding:64px 0 40px;border-bottom:1px solid var(--line);margin-bottom:44px}
+  .eyebrow{font:600 11px/1 var(--mono);letter-spacing:.18em;color:var(--faint);
+    text-transform:uppercase;margin-bottom:18px}
+  h1{font-size:40px;line-height:1.15;margin:0 0 14px;letter-spacing:-.022em;font-weight:680}
+  .sub{color:var(--dim);font-size:17px;max-width:70ch;margin:0 0 26px}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+  .chip{font:500 12px/1 var(--mono);padding:7px 11px;border-radius:6px;
+    background:var(--panel);border:1px solid var(--line);color:var(--dim)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  h2{font-size:25px;margin:64px 0 8px;letter-spacing:-.017em;font-weight:660;
+    padding-top:26px;border-top:1px solid var(--line)}
+  h2 .n{color:var(--faint);font-family:var(--mono);font-size:15px;margin-right:12px;
+    font-weight:500}
+  h3{font-size:17.5px;margin:34px 0 10px;font-weight:640;color:#f2f6fc}
+  h4{font-size:15px;margin:24px 0 8px;font-weight:640;color:var(--dim);
+    font-family:var(--mono);letter-spacing:.01em}
+  p{margin:12px 0;max-width:82ch}
+  ul,ol{max-width:80ch;padding-left:22px}
+  li{margin:7px 0}
+
+  .lede{font-size:16.5px;color:#cdd9ea;border-left:3px solid var(--line);
+    padding-left:18px;margin:20px 0 28px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 22px;margin:20px 0}
+  .card.tight{padding:16px 18px}
+  .card h4:first-child{margin-top:0}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .g{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:15px 17px}
+  .g .t{font:600 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:9px}
+  .g .v{font-size:22px;font-weight:660;letter-spacing:-.02em;margin-bottom:5px}
+  .g .d{font-size:13px;color:var(--dim);line-height:1.5}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13.5px;
+    font-variant-numeric:tabular-nums}
+  th{text-align:left;font:600 10.5px/1.3 var(--mono);letter-spacing:.11em;
+    text-transform:uppercase;color:var(--faint);padding:0 12px 9px 0;
+    border-bottom:1px solid var(--line);vertical-align:bottom}
+  td{padding:9px 12px 9px 0;border-bottom:1px solid #1a212d;vertical-align:top;
+    line-height:1.5}
+  tr:last-child td{border-bottom:none}
+  td.num{font-family:var(--mono);white-space:nowrap}
+  .scroll{overflow-x:auto;margin:16px -4px;padding:0 4px}
+
+  .tag{display:inline-block;font:600 10.5px/1 var(--mono);letter-spacing:.09em;
+    text-transform:uppercase;padding:4px 7px;border-radius:4px;white-space:nowrap}
+  .t-red{background:rgba(255,95,107,.14);color:var(--red)}
+  .t-amber{background:rgba(255,180,84,.14);color:var(--amber)}
+  .t-green{background:rgba(61,220,151,.14);color:var(--green)}
+  .t-blue{background:rgba(90,169,255,.14);color:var(--blue)}
+  .t-grey{background:#1b2230;color:var(--faint)}
+
+  .callout{border-radius:9px;padding:16px 19px;margin:20px 0;border:1px solid;
+    font-size:14.5px;line-height:1.6}
+  .co-red{background:rgba(255,95,107,.06);border-color:rgba(255,95,107,.3)}
+  .co-amber{background:rgba(255,180,84,.06);border-color:rgba(255,180,84,.3)}
+  .co-green{background:rgba(61,220,151,.06);border-color:rgba(61,220,151,.3)}
+  .co-blue{background:rgba(90,169,255,.06);border-color:rgba(90,169,255,.3)}
+  .co p:first-child{margin-top:0} .co p:last-child{margin-bottom:0}
+  .co .h{font:600 12px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    margin-bottom:10px;display:block}
+
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:15px 17px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;
+    line-height:1.62;color:#cdd9ea;margin:14px 0}
+  pre .c{color:var(--faint)}
+  pre .k{color:var(--violet)}
+  pre .s{color:var(--green)}
+  pre .n{color:var(--amber)}
+  pre .hl{background:rgba(255,95,107,.13);display:inline-block;width:100%}
+
+  .fl{font-family:var(--mono);font-size:12px;color:var(--faint)}
+  .pos{color:var(--green);font-weight:600}
+  .neg{color:var(--red);font-weight:600}
+  .zero{color:var(--red);font-weight:600}
+  .ok{color:var(--green);font-weight:600}
+
+  footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);
+    color:var(--faint);font-size:13px;line-height:1.7}
+  @media print{
+    body{background:#fff;color:#111}
+    .card,pre,.g,.callout{background:#f7f8fa;border-color:#ddd}
+    h2{border-color:#ddd} .fl{color:#666} code{background:#eee}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">hoichoi Hackathon'26 · Problem 4 · Internal QA</div>
+  <h1>Creative Reformatting Engine<br>Root-cause &amp; findings report</h1>
+  <p class="sub">A full audit of the <code>reframe</code> pipeline against the P4
+  requirements and auto-disqualifiers. Every number below was measured against the
+  real assets or re-derived by executing the shipped code — none are estimated.</p>
+  <div class="meta">
+    <span class="chip">Repo <b>hoichoi-reframe</b></span>
+    <span class="chip">Live <b>hoichoi-reframe.vercel.app</b></span>
+    <span class="chip">Worker <b>Blaxel · reframe-worker</b></span>
+    <span class="chip">Stack <b>Next.js 15 · Neon · Python 3.11</b></span>
+    <span class="chip">Date <b>26 Sep 2026</b></span>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════ VERDICT ══ -->
+<h2><span class="n">00</span>Verdict against the auto-disqualifiers</h2>
+
+<p class="lede">Three auto-disqualifiers, audited before and after the fixes.
+<strong>One is fixed and verified, one is fixed in substance, one is still open</strong>
+— and the open one is the cheapest remaining work with the best ratio of effort to
+judge-impact.</p>
+
+<div class="scroll">
+<table>
+<thead><tr>
+  <th style="width:28%">Auto-disqualifier</th><th style="width:16%">Status</th>
+  <th>Evidence</th>
+</tr></thead>
+<tbody>
+<tr>
+  <td><strong>Center-crop with a face-detection call bolted on that doesn't
+  actually influence the crop box</strong></td>
+  <td><span class="tag t-green">Fixed</span><br><span class="fl">verified §07</span></td>
+  <td>Was tripped: zero faces on the master, so the face term was
+  <em>mathematically absent</em> from every score and three of four outputs were
+  correct only by luck of framing. Now the detector finds both faces, and faces are
+  a <strong>lexicographic constraint</strong> ranked ahead of saliency rather than a
+  bonus inside it. All four ratios verified to retain 2/2 faces by independent
+  geometry. The 9:16 score moved 0.084 → 0.4878.</td>
+</tr>
+<tr>
+  <td>— same rule, video path</td>
+  <td><span class="tag t-green">Fixed</span><br><span class="fl">verified §07</span></td>
+  <td>Was at risk: on 2 of 3 test clips <em>both</em> diarized speakers resolved to
+  the <em>same physical person</em>, so a speaker change moved the crop onto the
+  listener. Binding is now one-to-one and scored on mouth-energy contrast.
+  <code>clip_a</code> <code>{0:9, 1:3}</code> → <code>{0:9, 1:7}</code>;
+  <code>clip_c</code> <code>{0:8, 1:4}</code> → <code>{0:8, 1:3}</code>. Two
+  different people in both cases. The camera also no longer starts pinned to the
+  frame centre.</td>
+</tr>
+<tr>
+  <td><strong>Vertical video reframed once at frame 0 and held static for the
+  whole clip</strong></td>
+  <td><span class="tag t-green">Clear</span><br><span class="fl">now provable</span></td>
+  <td>Never tripped, and now <em>demonstrable</em> rather than merely asserted:
+  every output frame reports which rung of the ladder produced it
+  (<code>track</code> / <code>wide</code> / <code>hold</code>). Measured travel
+  <strong>929 px</strong> over 536 distinct positions on <code>clip_c</code>, up from
+  316 px. The 2.80 s / 4.40 s frozen centre-crop openings are gone.</td>
+</tr>
+<tr>
+  <td><strong>A validator that only checks dimensions</strong></td>
+  <td><span class="tag t-red">Still open</span></td>
+  <td><strong>Not touched.</strong> Still 7 rules for video, 5 for image, zero
+  semantic. The image path no longer produces an empty crop, so the acute symptom
+  is gone — but the validator still cannot fail a file for losing a subject, and a
+  judge inspecting for safe zones and cropped faces finds nothing checking either.
+  <em>This is the remaining disqualifier, and §08 says what closes it.</em></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout co-green">
+  <span class="h" style="color:var(--green)">The UI contradiction is resolved as a side
+  effect — but not by fixing the UI</span>
+  <p style="margin-bottom:0">The asset page used to render a green
+  <strong>“all checks passed”</strong> badge directly above a decision log reading
+  <em>“No people present.”</em> That is no longer possible, because the pipeline no
+  longer produces people-free crops: every ratio now retains both faces and the
+  decision log records <code>faces_found=2, faces_kept=2</code> with a reason
+  describing the actual composition chosen. The badge and the log finally agree —
+  but note that they agree because the <em>output</em> got fixed, not because the
+  <em>validator</em> learned anything. It still cannot fail a file for losing a
+  subject.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════ 01 IMAGE ══ -->
+<h2><span class="n">01</span>Image path — two independent bugs, each fatal alone</h2>
+
+<p>The 9:16 <code>story_image</code> output contains a carved pillar and a floor.
+No people. The initial hypothesis was a single face-detection scale failure.
+<strong>That hypothesis is correct but incomplete — fixing it alone would not have
+fixed the 9:16.</strong> There is a second, independent bug in the crop scorer that
+zeroes the score of every face-containing candidate window.</p>
+
+<h3>Bug 1 · Face detection returns zero faces — a <em>fill-fraction</em> failure</h3>
+
+<p><code>worker/reframe/image/importance.py</code> uses MediaPipe
+<code>FaceLandmarker</code> (<code>running_mode=IMAGE</code>, <code>num_faces=6</code>,
+<code>min_face_detection_confidence=0.4</code>) on an <code>INTER_AREA</code> copy
+downscaled to <code>ANALYSIS_LONG_EDGE = 1600</code>.</p>
+
+<p>It is <strong>not</strong> a pixel-resolution problem and <strong>not</strong> a
+confidence-threshold problem:</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Experiment</th><th style="width:16%">Faces found</th></tr></thead>
+<tbody>
+<tr><td>Whole frame at 4000 / 3200 / 2400 / <b>1600</b> / 1200 / 1000 / 800 / 600 px</td>
+  <td class="num"><span class="zero">0 at every scale</span></td></tr>
+<tr><td><code>min_face_detection_confidence</code> = 0.4 / 0.2 / 0.05 / 0.01</td>
+  <td class="num"><span class="zero">0 at every value</span></td></tr>
+<tr><td>1600 px copy upscaled 2× (bicubic / Lanczos / area)</td>
+  <td class="num"><span class="zero">0</span></td></tr>
+<tr><td>Full-range detector (<code>model_selection=1</code>), 1600 px frame</td>
+  <td class="num"><span class="pos">1</span> — wrong model head, see below</td></tr>
+<tr><td>Watermark removed / CLAHE applied / 2.6× gain (on a 600 px face crop)</td>
+  <td class="num"><span class="pos">1</span> — watermark and darkness are innocent</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout co-amber">
+  <span class="h" style="color:var(--amber)">The actual mechanism</span>
+  <p><code>FaceLandmarker</code> is hard-wired to the <strong>BlazeFace
+  <em>short-range</em></strong> head with a fixed-size input
+  (<code>FaceDetector: 192×192</code>, per Google's own model card). A proposal is
+  only ever generated if the face occupies roughly <strong>≥13–15% of the
+  frame</strong>.</p>
+  <p style="margin-bottom:0">Our two faces are <strong>164×168 px</strong> and
+  <strong>152×164 px</strong> in a 4000 px master — <strong>4.1% of frame</strong>,
+  3.5× below the floor. The variable that matters is the face's
+  <em>fill fraction</em>, not its pixel size. Proof: holding the face at a constant
+  ~180 px while varying only the frame size, detection dies exactly between 1300 px
+  (13.8% fill, 1 face) and 1400 px (12.9% fill, 0 faces) — and the frontier is
+  scale-invariant, so an 18 px face inside a 150 px frame <em>is</em> detected at
+  12% fill.</p>
+</div>
+
+<p>Only the scale at which we <em>feed</em> the model is a real lever:
+<code>FaceDetector</code> can be swapped to the full-range model, but
+<code>FaceLandmarker</code> cannot. Measured multi-scale results:</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Strategy (on the 1600 px analysis copy)</th>
+  <th style="width:9%">Faces</th><th style="width:9%">False&nbsp;pos.</th>
+  <th style="width:34%">Note</th></tr></thead>
+<tbody>
+<tr><td>Single-shot 1600 px <span class="fl">— what ships today</span></td>
+  <td class="num neg">0</td><td class="num">—</td><td class="fl">the bug</td></tr>
+<tr><td>2×2 grid, 800 px tiles</td><td class="num neg">0</td><td class="num">—</td>
+  <td class="fl">tiles too large</td></tr>
+<tr><td>3×3 grid, 533 px tiles</td><td class="num" style="color:var(--amber)">1</td>
+  <td class="num">0</td><td class="fl">loses one face</td></tr>
+<tr><td>4×4 grid, 400 px tiles, 20% overlap</td><td class="num pos">2</td>
+  <td class="num">0</td><td class="fl">works, but 400 px sits on the 13–15% cliff</td></tr>
+<tr><td><b>5×5 grid, 320 px tiles, 20% overlap</b></td>
+  <td class="num pos"><b>2</b></td><td class="num">0</td>
+  <td class="fl"><b>chosen</b> — 66 px face in a 384 px tile = 17% fill, safely clear</td></tr>
+<tr><td>300 px sliding tiles, stride 150</td><td class="num pos">2</td>
+  <td class="num neg">2</td><td class="fl">ceiling carving + blood pool hallucinate</td></tr>
+</tbody>
+</table>
+</div>
+
+<p class="fl">The hard lower bound: do not go below ~300 px tiles. Two specific
+false-positive attractors were identified in this master — the carved ceiling motif
+at <code>y≈0.076</code> and the blood pool at <code>y≈0.625</code>.</p>
+
+<h3>Bug 2 · Coordinate-space mismatch — the reason the pillar won</h3>
+
+<p>This is the bug that actually decided the crop, and it is independent of
+Bug 1.</p>
+
+<pre><span class="c"># worker/reframe/main.py</span>
+<span class="n">103</span>  imp, _ = importance_map(img_bgr)   <span class="c"># ← `scale` DISCARDED</span>
+<span class="n">112</span>  cands = best_crop_candidates(imp, img_w, img_h, p[<span class="s">"ratio"</span>], k=<span class="n">3</span>, face_mask=face_mask)
+
+<span class="c"># worker/reframe/image/crops.py  —  _score()</span>
+<span class="n">74</span>  win = importance[y:y + h, x:x + w]   <span class="c"># 4000-space indices…</span>
+                                       <span class="c"># …into a 1600×1600 array</span></pre>
+
+<p><code>importance_map</code> returns a map at <em>analysis</em> scale together with
+the scale factor. The scale is thrown away, and the scorer slices the 1600×1600 array
+with 4000-space coordinates. Numpy silently clamps, so:</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Candidate box (full-res)</th><th>Resulting slice</th>
+  <th style="width:13%">Score</th></tr></thead>
+<tbody>
+<tr><td class="num">(0, 980, 1125, 2000)</td><td class="num">(620, 1125) — 697 500 px</td>
+  <td class="num">0.0842</td></tr>
+<tr><td class="num">(1147, 980, 1125, 2000)</td><td class="num">(620, 453) — 280 860 px</td>
+  <td class="num">0.0089</td></tr>
+<tr class="hl"><td class="num">(1700, 980, 1125, 2000)</td>
+  <td class="num">(620, <b>0</b>) — <b>empty</b></td><td class="num neg">0.0000</td></tr>
+<tr class="hl"><td class="num">(2400, 0, 2137, 3800)</td>
+  <td class="num">(1600, <b>0</b>) — <b>empty</b></td><td class="num neg">0.0000</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout co-red">
+  <span class="h" style="color:var(--red)">Only 31% of the true crop area was ever scored</span>
+  <p style="margin-bottom:0">Every 9:16 window with <code>x ≥ 1600</code> — which is
+  <em>every window that could contain a face</em> — scores exactly <code>0.0</code>.
+  Face A needs <code>x ∈ [683, 1644]</code>; face B needs <code>x ∈ [1147, 1783]</code>.
+  The three candidates that were actually shipped sat at
+  <code>x ≤ 117</code>: <strong>zero overlap, not even partial.</strong></p>
+</div>
+
+<p>The counterfactual is what proves both bugs must be fixed. Same search, 9:16,
+at 50% of maximum zoom:</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Variant</th><th>Top-3 candidate scores</th>
+  <th style="width:16%">Faces in top box</th></tr></thead>
+<tbody>
+<tr><td>As shipped (Bug 2 present)</td><td class="num">0.084 · 0.084 · 0.082</td>
+  <td class="num neg">0</td></tr>
+<tr><td>Coordinates fixed, saliency only (Bug 1 still present)</td>
+  <td class="num">0.106 · 0.105 · 0.105</td><td class="num neg">0</td></tr>
+<tr class="hl"><td><b>Coordinates fixed + working face term</b></td>
+  <td class="num pos"><b>0.402 · 0.401 · 0.401</b></td>
+  <td class="num pos"><b>2</b></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Fixing face detection alone leaves <code>0.106</code> with zero faces. Fixing
+coordinates alone leaves the face bonus at exactly <code>0.3 × 0</code>. Both
+must land.</p>
+
+<h3>Bug 3 · Faces were a soft bonus, so nothing guaranteed they survived</h3>
+
+<pre><span class="c"># worker/reframe/image/crops.py</span>
+<span class="n">65</span>  <span class="k">def</span> <span class="k">_score</span>(importance, face_mask, x, y, w, h, img_h):
+<span class="n">79</span>      <span class="k">if</span> face_total &lt;= <span class="n">0</span>:
+<span class="n">80</span>          <span class="k">return</span> mean_imp          <span class="c"># ← silent. no log, no fallback.</span>
+<span class="n">82</span>      <span class="k">return</span> mean_imp + FACE_BONUS * inside   <span class="c"># FACE_BONUS = 0.3</span></pre>
+
+<p>Nothing anywhere rejects a crop that excludes every face. Note also that
+<code>face_mask</code> is <code>(imp &gt; 0.85)</code> — a threshold of the fused
+importance map, <em>not</em> the detector's output — and it short-circuits before the
+face term is ever computed.</p>
+
+<h3>Bug 4 · The watermark band is unachievable for tall ratios</h3>
+
+<p><code>WATERMARK_BAND = (0.40, 0.60)</code> is zeroed before faces are painted
+(faces <em>are</em> painted after, so a detected face survives the band — that part
+is correct). But measured: for <b>9:16, 1:1 and 4:5</b> cut from a square source,
+<em>every</em> candidate window at <em>every</em> zoom level the code uses must
+intersect that band, because such a crop is height-bound and spans nearly the full
+image height. The band is therefore a uniform 20%-of-height dead zone: it cannot
+steer the choice, it can only deflate all scores equally — while destroying the
+saliency of exactly the region the faces occupy. Face B
+(<code>y 0.466–0.507</code>) sits entirely inside the band.</p>
+
+<h3>Bug 5 · The VLM was right; it was given no way to say so</h3>
+
+<p>The recorded reason was:</p>
+<blockquote style="margin:16px 0;padding:4px 0 4px 18px;border-left:3px solid var(--line);
+  color:#cdd9ea;font-style:italic">
+“No people present; crop 1 frames the carved temple column and lit ground most
+completely and <b>least cropped</b>.”
+</blockquote>
+
+<p>The model correctly reported an empty candidate set, then applied the only
+criterion left to it — <code>vlm.py:95</code> literally asks for the crop that
+<em>“feels least cropped”</em>. It had no escape hatch: the response schema is
+<code>{"choice": int, "reason": str}</code>, an out-of-range or unparseable answer is
+silently clamped to <code>0</code>, and it only ever sees the 3 candidates it was
+handed. The fix belongs upstream in <code>crops.py</code>, not in the prompt —
+though the prompt has to stop rewarding emptiness too.</p>
+
+<h3>Which outputs were actually wrong</h3>
+<div class="scroll">
+<table>
+<thead><tr><th>Output</th><th>Ratio</th><th>Looked right?</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td><code>youtube_thumbnail</code></td><td class="num">16:9</td>
+  <td><span class="tag t-green">yes</span></td>
+  <td>2600×1462 window is too wide to avoid the subjects — <b>geometry, not intelligence</b></td></tr>
+<tr><td><code>square_image</code></td><td class="num">1:1</td>
+  <td><span class="tag t-green">yes</span></td><td>same</td></tr>
+<tr><td><code>feed_image</code></td><td class="num">4:5</td>
+  <td><span class="tag t-green">yes</span></td><td>same</td></tr>
+<tr><td><code>story_image</code></td><td class="num">9:16</td>
+  <td><span class="tag t-red">no</span></td>
+  <td>2250×4000 window is narrow — the only ratio where geometry fails you</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout co-blue">
+  <span class="h" style="color:var(--blue)">The uncomfortable implication</span>
+  <p style="margin-bottom:0">Three of four outputs were correct by accident. A judge
+  spot-checking the gallery would very likely <em>not</em> catch this. That is worse
+  than a visible bug, because it means the pipeline's correctness is not a property
+  of the pipeline.</p>
+</div>
+
+<h3>Test coverage that let all of this ship</h3>
+<ul>
+<li><code>test_importance_map_shape_and_range</code> asserts
+<code>imp.max() &lt;= 1.0</code> — which passes just as happily on a map that is
+completely empty. It would pass on nothing at all.</li>
+<li><code>test_candidates_916</code> never passes a <code>face_mask</code>, so
+<code>crops.py:76-83</code> — the entire face-scoring branch — has
+<strong>zero coverage anywhere in the repo</strong>. The <code>FACE_BONUS</code> line
+is dead code on this master and no test noticed.</li>
+<li>No test anywhere covers the zero-faces-found case.</li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════ 02 VIDEO ══ -->
+<h2><span class="n">02</span>Video path — the crop moves, but it is not following the speaker</h2>
+
+<p>Good news first, and it is genuinely good: <strong>the static-crop disqualifier is
+not tripped.</strong> Rendered frames were template-matched back into the source to
+recover the true crop position over time —</p>
+
+<div class="grid">
+  <div class="g"><div class="t">Crop x over the 190 s master (of 1920)</div>
+    <div class="v" style="font-size:16px;font-family:var(--mono);line-height:1.9">
+      t=1s <span class="pos">768</span> · 20s <span class="pos">201</span> ·
+      60s <span class="pos">1109</span><br>
+      80s <span class="pos">1095</span> · 120s <span class="pos">447</span> ·
+      180s <span class="pos">527</span></div>
+    <div class="d" style="margin-top:8px">908 px of real travel. The sendcmd render
+    works, and the shot-cut reset-and-jump is correct.</div></div>
+  <div class="g"><div class="t">But the number that matters</div>
+    <div class="v" style="color:var(--red)">32.5%</div>
+    <div class="d">of diarized speech time is followed with an
+    <em>identified active speaker</em>. 260 of 799 grid points inside a diarized
+    segment have a non-null <code>active_track</code>. The other 67.5% is “average of
+    whoever is on screen”, which has no idea who is talking.</div></div>
+</div>
+
+<h3>Defect 1 · The no-active-speaker fallback is a non-speaker heuristic</h3>
+
+<p><code>video/camera.py:86-101</code> falls back to the mean centre-x of all visible
+faces (or the midpoint of the two widest if they fit in one window). This is a
+geometric heuristic wearing the costume of speaker tracking. Combined with defect 4
+below it is what a judge reads as disqualifier #1.</p>
+
+<p>It also produces the opening freeze: <code>cur_cx</code> is initialised to
+<code>0.5</code>, so when no face is detected at <code>t=0</code> the path begins
+with a literal centre crop — <strong>2.80 s on <code>clip_c</code>, 4.40 s on
+<code>clip_b</code></strong>.</p>
+
+<h3>Defect 2 · Two incompatible meanings of <code>cx</code></h3>
+
+<pre><span class="c"># camera.py:150  — treats cx as a CENTRE POSITION ON THE FRAME</span>
+<span class="k">def</span> <span class="k">_clamp</span>(cx, crop_w):  <span class="k">return</span> max(crop_w/<span class="n">2</span>, min(<span class="n">1</span> - crop_w/<span class="n">2</span>, cx))
+
+<span class="c"># render.py:40   — treats cx as a FRACTION OF AVAILABLE TRAVEL</span>
+x_f = p[<span class="s">"cx"</span>] * (src_w - cw)</pre>
+
+<p>These agree only at <code>cx == 0.5</code>. The validator silently adopted the
+frame-centre reading, so <strong>it scores a window that was never rendered</strong>:</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Asset</th><th>Validator vs. render mean divergence</th>
+  <th style="width:16%">Worst case</th></tr></thead>
+<tbody>
+<tr><td><code>clip_c</code></td><td class="num">60.7 px</td><td class="num neg">208 px</td></tr>
+<tr><td><code>clip_a</code></td><td class="num">58.1 px</td><td class="num neg">—</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Two side effects: only <strong>68%</strong> of the available travel is reachable,
+and the subject ends up pushed toward the frame edge (up to 16% off-centre) instead
+of centred — so a judge comparing the reel against the reported score sees a framing
+the score never described.</p>
+
+<h3>Defect 3 · The One Euro filter is completely inert</h3>
+
+<p>The clamp binds on <strong>271 of 272 pan events on <code>clip_a</code> (99.6%)</strong>.
+The filter's output is roughly 20× larger than the clamp, so
+<code>camera.py:144</code> discards it on every single frame. <code>MIN_CUTOFF = 0.8</code>
+and <code>BETA = 1.5</code> have <strong>no observable effect whatsoever</strong> — all
+camera motion is a constant 152 px/s ramp. The code comment says “crosses frame in
+~2 s”; measured, it takes <strong>12.6 s</strong>, off by ~6×. There is also a
+first-sample passthrough bug: the filter returns raw unfiltered input on its first
+call, so after every shot-cut reset the first step is unfiltered.</p>
+
+<h3>Defect 4 · Track fragmentation → both speakers mapped to the same person</h3>
+
+<p>This is the root cause. <code>video/faces.py</code> links tracks by IoU with
+<code>MAX_GAP_FRAMES = 2</code> — only 0.6 s of decode — and an unmatched detection
+<em>always</em> mints a new track; an abandoned track is never re-acquired.</p>
+
+<div class="grid">
+  <div class="g"><div class="t">The 190 s master</div><div class="v">11 + 8</div>
+    <div class="d">461 detections → 43 tracks. Clustering the 19 speaker-eligible
+    tracks by mean face centre-x yields exactly <b>two people</b>, shattered into
+    <b>11</b> and <b>8</b> fragments.</div></div>
+  <div class="g"><div class="t">Consequence</div><div class="v" style="color:var(--red)">1.4 s</div>
+    <div class="d">Speaker 0 speaks for 42.8 s but is bound to a track that exists
+    for 8 frames, because <code>MIN_TRACK_FRAMES = 8</code> is the only length filter
+    and the binding is a bare argmax. <b>70.7%</b> of the master ends up with
+    <code>active_track = None</code>.</div></div>
+</div>
+
+<div class="callout co-red">
+  <span class="h" style="color:var(--red)">On two of the three test clips, both diarized speakers resolve to the same person</span>
+  <div class="scroll" style="margin:6px 0 0">
+  <table>
+  <thead><tr><th>Clip</th><th><code>speaker_track</code></th><th>Resolved cx</th><th>Reality</th></tr></thead>
+  <tbody>
+  <tr><td><code>clip_a</code></td><td class="num">{'0': 9, '1': 3}</td>
+    <td class="num">0.55, 0.64</td><td><b>both on the right-hand person</b></td></tr>
+  <tr><td><code>clip_c</code></td><td class="num">{'0': 8, '1': 4}</td>
+    <td class="num">0.33, 0.36</td><td><b>both on the left-hand person</b></td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p style="margin-top:12px;margin-bottom:0">Cause: when there is little silence
+  between diarized segments, <code>speaker.py:94</code> degrades the baseline to
+  <code>base × 0.6</code> — a self-referential whole-track mean, which hands a
+  positive response to <em>every</em> speaker for <em>any</em> generically mouthy
+  track. This is the exact inverse of “follow whoever is speaking”.</p>
+</div>
+
+<h3>Also measured on the video path</h3>
+<div class="scroll">
+<table>
+<thead><tr><th style="width:38%">Observation</th><th style="width:14%">Value</th><th>Assessment</th></tr></thead>
+<tbody>
+<tr><td>Audio/video timeline offset</td><td class="num pos">0.000 s</td>
+  <td class="fl">on all 4 assets — no drift compensation needed, but
+  <code>probe.py</code> never records stream <code>start_time</code>, so a master with
+  a non-zero audio offset would silently shift every timestamp</td></tr>
+<tr><td>Overlapping diarization segments</td><td class="num neg">6 pairs</td>
+  <td><code>speaker.py:126</code> uses <code>next()</code> = first match wins; up to
+  0.86 s of one speaker's speech silently awarded to the other</td></tr>
+<tr><td>CLAHE contribution</td><td class="num pos">net rescue</td>
+  <td>fires on 52.7% of the master; adds 16 real faces on <code>clip_b</code> and
+  <em>zero</em> false positives. Not the problem</td></tr>
+<tr><td>Two people simultaneously on screen</td><td class="num">9.5% of frames</td>
+  <td class="fl">0% on <code>clip_c</code> and <code>clip_b</code> — the assets are
+  shot/reverse-shot, so the headline requirement is barely exercised by the test set</td></tr>
+<tr><td>Mouth-only fallback (if Sarvam fails)</td><td class="num neg">97.4% None</td>
+  <td>100% None on <code>clip_b</code>. A Sarvam outage silently degrades the reel
+  to a slow drift between face-group centroids</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Test coverage on the video path</h3>
+<p><code>grep -rn "camera_path\|assign_speakers\|render_vertical\|speaker_on_screen"
+worker/tests/</code> returns <strong>nothing</strong>. <code>camera.py</code>,
+<code>speaker.py</code>, <code>shots.py</code>, <code>video/render.py</code> and
+<code>validate_speaker.py</code> have <strong>zero test coverage</strong>. The one
+semantic metric in the codebase — the speaker-on-screen score — is entirely
+untested.</p>
+
+<!-- ══════════════════════════════════════════════════ 03 VALIDATOR ══ -->
+<h2><span class="n">03</span>The validator trips disqualifier #3</h2>
+
+<p>Every rule in the system is produced by one function, <code>validate.py:66-93</code>.
+Classified by what each rule actually asks:</p>
+
+<div class="grid">
+  <div class="g"><div class="t">Dimensional</div><div class="v">6</div>
+    <div class="d"><code>resolution</code> · <code>size_mb</code> ·
+    <code>duration_sec</code> · <code>fps</code> · <code>codec</code> ·
+    <code>container</code></div></div>
+  <div class="g"><div class="t">Geometric</div><div class="v">1</div>
+    <div class="d"><code>ratio</code> — aspect within 1%</div></div>
+  <div class="g"><div class="t">Semantic</div><div class="v" style="color:var(--red)">0</div>
+    <div class="d">nothing in the entire system asks a question about
+    <em>what is in the picture</em></div></div>
+  <div class="g"><div class="t">Pixel / face data reaching the validator</div>
+    <div class="v" style="color:var(--red)">none</div>
+    <div class="d"><code>_probe_video</code> and <code>_probe_image</code> return
+    dimensions only</div></div>
+</div>
+
+<p>The judges' toughest test explicitly inspects outputs for
+<strong>“cropped faces and violated safe zones”</strong>. A 24-term search for
+<code>safe_area</code>, <code>title_safe</code>, <code>action_safe</code>,
+<code>subject_margin</code>, <code>forbid_face_clip</code>, <code>min_subjects_visible</code>,
+<code>eyeline</code>, <code>headroom</code>, <code>containment</code> and 15 more across
+all first-party code returns <strong>zero rules</strong>.</p>
+
+<h3>The single most wasteful finding in this audit</h3>
+
+<div class="callout co-amber">
+  <span class="h" style="color:var(--amber)">We compute our own verdict on the hardest
+  test, then throw it away</span>
+  <p><code>validate_speaker.py:96</code> computes an explicit boolean against
+  <code>TARGET = 0.85</code>. Grepping all first-party code for a consumer of
+  <code>score['pass']</code> finds exactly one — a debug script. The pipeline scores
+  92.3%, and the UI shows a green bar with no threshold and no target marker
+  (<code>assets/[id]/page.tsx:51-61</code>).</p>
+  <p style="margin-bottom:0">Worse, frames with <code>active_track = None</code> are
+  dropped from <em>both</em> numerator and denominator, so
+  <strong>19 of 35 diarized segments</strong> on the master are excluded entirely and
+  reported as <code>score: null</code>. The 92.3% is computed on the third of speech
+  time where the system already knew the answer.</p>
+</div>
+
+<h3>What is genuinely solid</h3>
+<p>Traceability — the disqualifier “outputs cannot be traced back to the master” —
+is <strong>not</strong> tripped and is the strongest non-AI part of the system.
+<code>master_id</code> is a non-null insert parameter
+(<code>db.py:144-155</code>), both call sites pass it, and there are four UI surfaces
+linking both directions plus a per-master library filter. Two gaps worth closing:
+the job page's local <code>Output</code> type drops <code>master_id</code>
+(<code>jobs/[id]/page.tsx:8-15</code>) so the natural first stop after upload shows no
+master link; and <code>db/schema.sql</code> is referenced by <code>db.py:1-2</code> but
+is <strong>not in the repository</strong>.</p>
+
+<!-- ══════════════════════════════════════════════════ 04 OSS ══ -->
+<h2><span class="n">04</span>What the reference projects actually do</h2>
+
+<p>All five projects cited in <code>HANDOVER.md</code> were read at source. Three
+findings changed the remediation plan.</p>
+
+<div class="scroll">
+<table>
+<thead><tr>
+  <th style="width:19%">Project</th><th style="width:19%">Detection resolution</th>
+  <th style="width:24%">Face → crop</th><th>No-face / no-speaker behaviour</th>
+</tr></thead>
+<tbody>
+<tr>
+  <td><strong>autoclip</strong><br><span class="fl">MIT · closest to our design</span></td>
+  <td><b>Full source resolution.</b> No downscale anywhere. This is why it doesn't
+  have our bug.</td>
+  <td><b>The only hard constraint in the set</b>, and it's a feasibility gate, not a
+  penalty: <code>if spread &gt; crop_w * 0.95</code> ⇒ blur-pad (<code>fit=True</code>)
+  rather than cut someone out.</td>
+  <td>Three-rung <code>Strategy</code> enum: <b>TRACK</b> → <b>WIDE</b> (locked on all
+  visible faces, never pans) → <b>GENERAL</b> (centre crop). Never stacks, never clips.</td>
+</tr>
+<tr>
+  <td><strong>ClipsAI</strong><br><span class="fl">pyannote + MTCNN</span></td>
+  <td>960 px proxy + MTCNN cascade (scale-robust, but needs PyTorch).</td>
+  <td>Pure centring on the ROI, <code>max(…, 0)</code> clamp, <b>no check at all</b>.</td>
+  <td>Centre-quarter default ROI. <b>No temporal smoothing whatsoever</b> — one crop
+  per segment, a step function.</td>
+</tr>
+<tr>
+  <td><strong>vertix</strong><br><span class="fl">MIT</span></td>
+  <td>Fixed 320×240, UltraFace anchor-free + NMS + skin gate. <b>Chooses to discard
+  small faces rather than find them</b> (<code>MIN_SPEAKER_FACE_SIZE = 0.12</code>).</td>
+  <td>Derived from the face and <i>sized</i> from it — crop is 6.5× face height, so
+  the face is inside by construction.</td>
+  <td>Widens out to the full uncropped frame, and reacts to zero faces
+  <i>faster than to anything else</i>. ≥3 faces and no winner ⇒ no crop at all.</td>
+</tr>
+<tr>
+  <td><strong>auto-vertical-reframe</strong><br><span class="fl">YOLO11 + ByteTrack</span></td>
+  <td><b>The coarse→fine cascade.</b> YOLO finds the person; MediaPipe runs only on
+  the <b>upper 65% of the person box</b>, so the face re-normalises to fill the fixed
+  input.</td>
+  <td>Soft term in an 11-feature linear sum (<code>face_presence: 0.48</code>); zoom is
+  clamped, so wide subjects are <b>silently clipped</b>.</td>
+  <td>Whole-frame <b>saliency</b> at low confidence — structurally the same trap we
+  fell into.</td>
+</tr>
+<tr>
+  <td><strong>smartcrop.py</strong></td>
+  <td colspan="2" style="color:var(--red)"><b>There is no face detection in this
+  project at all.</b> The “face” feature is skin-tone colour distance, weighted
+  <code>skin_weight = 1.8</code>. Selection is a bare <code>max(crops, key=score)</code>
+  with no rejection of any candidate.</td>
+  <td>n/a — single image</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout co-green">
+  <span class="h" style="color:var(--green)">Finding 1 — a published paper documents our exact bug, with a better detector</span>
+  <p>ClipsAI's own report, §Failure Cases, verbatim:</p>
+  <blockquote style="margin:10px 0;padding:2px 0 2px 16px;border-left:3px solid var(--line);
+    color:#cdd9ea;font-style:italic;font-size:14px">
+  “The first is for faces that are small relative to the size of the image… <b>Face
+  detection models, being trained on images of a particular pixel width and height,
+  often have trouble detecting faces who's pixel width and height are far outside
+  their training data.</b> … The face detection model fails to detect the speaker's
+  face at all. As a result, the man to his left is chosen as a substitute in the
+  absence of the true speaker's face being identified in that segment.”
+  </blockquote>
+  <p style="margin-bottom:0">That is an ICIP paper using MTCNN — a 3-stage
+  scale-robust cascade, strictly stronger than our fixed-input landmark model —
+  hitting our failure, documenting it in a figure captioned <em>“Incorrectly chosen
+  speaker due to small faces”</em>, and <b>not fixing it</b>. That is a citable
+  precedent, and it is the honest framing for our writeup.</p>
+</div>
+
+<div class="callout co-green">
+  <span class="h" style="color:var(--green)">Finding 2 — nobody validates semantics. This is our differentiator, not a gap</span>
+  <p style="margin-bottom:0">Not one of the five re-runs face detection on its own
+  output. Not one checks a platform spec file. autoclip's entire post-render check is
+  <code>file.exists() and size &gt; 0</code>. There is <strong>no precedent anywhere
+  in the reference set for what we are about to add</strong> — which is exactly why it
+  is worth adding, and worth saying so plainly on the day.</p>
+</div>
+
+<div class="callout co-green">
+  <span class="h" style="color:var(--green)">Finding 3 — two citation errors in our own HANDOVER.md</span>
+  <ul style="margin-bottom:0">
+    <li>ClipsAI is <code>github.com/<b>ClipsAI</b>/clipsai</code>, not
+    <code>clipsai/clipsai</code>.</li>
+    <li>smartcrop.py is <code>github.com/<b>smartcrop</b>/smartcrop.py</code> (a
+    community port). <code>jwagner</code> is the <b>JavaScript</b> original,
+    <code>jwagner/smartcrop.js</code>. <code>jwagner/smartcrop.py</code> 404s.</li>
+  </ul>
+  <p style="margin-top:12px;margin-bottom:0">Worth fixing regardless, because
+  citing smartcrop.py as a face-aware cropper is a misreading of our own handover
+  that a judge who checks would catch. It is a saliency prior.</p>
+</div>
+
+<p class="fl" style="margin-top:22px">Also verified: MediaPipe
+<code>FaceDetector</code> <em>can</em> be swapped to the full-range model, but
+<code>FaceLandmarker</code> cannot — so for our image path, tiling is the only
+available lever. That constraint is what fixes the remediation design.</p>
+
+<!-- ══════════════════════════════════════════════════ 05 INFRA ══ -->
+<h2><span class="n">05</span>Stuck job <code>e833ed33</code></h2>
+
+<p>A test job left at <code>status='queued'</code> with zero outputs. Root cause:
+<strong>the Blaxel worker never touched the row.</strong></p>
+
+<ul>
+<li><code>status='queued'</code> is written in exactly one place in the entire
+repository — <code>web/lib/db.ts:124</code>. The worker's <em>first</em> database
+write is <code>job_entry.py:129</code>. A row still reading
+<code>queued</code>/0 therefore <em>proves</em> the container never reached line 129.</li>
+<li>The complete Blaxel execution history in <code>work/execs.json</code>
+(11:45Z→13:52Z, no gaps) contains <strong>no execution carrying that job id</strong>.</li>
+<li><code>web/lib/blaxel.ts</code> swallows every failure mode — missing env at
+<code>:9</code>, any non-2xx at <code>:26</code>, timeout/TLS at <code>:27</code> — and
+<code>web/app/api/jobs/route.ts:28</code> <strong>discards the returned boolean
+entirely</strong>. Not logged, not persisted, not returned to the client.</li>
+<li><code>worker/blaxel.toml:7</code> sets <code>maxRetries = 0</code>, so the platform
+will not retry either. The job page then polls every 2 s <strong>forever</strong> with
+no give-up condition, rendering <code>Working… 0%</code> indefinitely.</li>
+</ul>
+
+<div class="callout co-amber">
+  <span class="h" style="color:var(--amber)">A structural defect that would hide the
+  next occurrence too</span>
+  <p style="margin-bottom:0"><code>job_entry.py:112-126</code> — <code>load_config</code>,
+  <code>_ensure_models</code>, reading <code>spec.json</code>, <code>get_master</code>,
+  <code>mkdir</code> — sits <strong>outside</strong> the <code>try:</code> that begins at
+  line 128. Any failure in that window (missing secret, model fetch blocked, spec not
+  uploaded, wrong Neon branch) kills the container <em>before</em> it can write
+  <code>failed</code>. A boot crash is currently invisible by construction.
+  Separately, the worker calls <code>set_job</code> but never <code>finish_job</code>,
+  so <code>finished_at</code> is never set on worker-driven jobs.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════ 06 REMEDIATION ══ -->
+<h2><span class="n">06</span>Remediation — complete</h2>
+
+<p>Two parallel implementation tracks, non-overlapping file sets, integrated in
+<code>main.py</code> and gated by the harness in §07. Diff: 11 files, ~1 600
+insertions, 1 597 across worker and scripts.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th style="width:9%">Track</th><th style="width:26%">Change</th>
+  <th style="width:26%">Files</th><th>Rationale</th></tr></thead>
+<tbody>
+<tr>
+  <td rowspan="5"><b>A</b><br><span class="fl">image</span></td>
+  <td>Tiled face detection</td><td class="fl">image/importance.py</td>
+  <td>5×5 grid, 320 px step, 20% overlap, boxes mapped to analysis space and merged
+  before dedupe. Floor and false-positive attractors documented in-code.</td></tr>
+<tr>
+  <td>Coordinate space</td><td class="fl">image/crops.py</td>
+  <td>One conversion, full-res box → analysis space, clamped not wrapping. Kills Bug 2.</td></tr>
+<tr>
+  <td>Hard lexicographic face constraint</td><td class="fl">image/crops.py</td>
+  <td>Sort by <em>(faces fully retained ↓, score ↓)</em> instead of adding
+  <code>FACE_BONUS</code>. Makes face detection structurally determine the box.</td></tr>
+<tr>
+  <td>Ratio-conditional band suppression</td><td class="fl">image/importance.py</td>
+  <td>Keep zeroing the watermark band only for ratios that can actually avoid it.</td></tr>
+<tr>
+  <td>Prompt + reject path</td><td class="fl">vlm.py</td>
+  <td>Drop “feels least cropped”; add a way to signal <em>no candidate is
+  acceptable</em> instead of silently clamping to 0.</td></tr>
+<tr>
+  <td rowspan="4"><b>B</b><br><span class="fl">video</span></td>
+  <td>Strategy ladder</td><td class="fl">video/camera.py</td>
+  <td>TRACK → WIDE → HOLD, reported per frame in the path, replacing face-group
+  centroiding. Fixes the 2.80 s / 4.40 s frozen centre-crop openings.</td></tr>
+<tr>
+  <td>Single <code>cx</code> convention</td><td class="fl">video/camera.py<br>video/render.py<br>validate_speaker.py</td>
+  <td>One shared conversion helper used by the render <em>and</em> the validator, so
+  the validator scores the window that was actually produced.</td></tr>
+<tr>
+  <td>Track consolidation</td><td class="fl">video/faces.py<br>video/speaker.py</td>
+  <td>Merge same-person fragments to a fixed point; duration-aware speaker→track
+  binding so a 42.8 s speaker turn cannot be bound to a 1.4 s fragment. Overlapping
+  diarization segments resolved properly.</td></tr>
+<tr>
+  <td>Honest scoring + live filter</td><td class="fl">video/camera.py<br>validate_speaker.py</td>
+  <td>One Euro applied to the desired signal with the clamp as a safety net; validator
+  reports coverage separately from hit rate; slivers no longer count as hits.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>New tests — 6 → 51</h3>
+<div class="grid">
+  <div class="g"><div class="t">Image · 24 tests</div><ul style="margin:0;padding-left:18px">
+    <li>coordinate regression (fails on old code)</li>
+    <li>face mask must change the returned box</li>
+    <li>hard-constraint retention reporting</li>
+    <li>band-conditional suppression per ratio</li>
+    <li>no-face case reports 0 rather than degrading silently</li>
+    <li>exact aspect + in-bounds for all four ratios</li>
+    <li>render aspect drift locked under tolerance</li></ul></div>
+  <div class="g"><div class="t">Video · 24 tests</div><ul style="margin:0;padding-left:18px">
+    <li>two speakers → <b>two different people</b> (the disqualifier guard)</li>
+    <li>two speakers → <b>two different people, with one person fragmented
+    across many tracks</b> (fails on old code)</li>
+    <li>camera is not static — distinct cx + minimum travel</li>
+    <li>One Euro ramps rather than jumps; reaches target faster than 12.6 s</li>
+    <li>shot cut resets instead of panning across it</li>
+    <li>strategy ladder: TRACK / WIDE / HOLD</li>
+    <li>render ⇄ validator window round-trip within tolerance</li>
+    <li>untracked frames stay in the denominator; coverage reported separately</li></ul></div>
+</div>
+
+<p>Each new test was <strong>mutation-tested</strong>: every original bug was
+re-introduced one at a time and confirmed to be caught. Reverting the coordinate
+mapping fails 14 tests; making faces a soft bonus again fails 5; removing the tile
+grid fails 3; always zeroing the band fails 1; coercing the VLM's <code>-1</code> back
+to <code>0</code> fails 2.</p>
+
+<!-- ══════════════════════════════════════════════════ 07 VERIFY ══ -->
+<h2><span class="n">07</span>Verification</h2>
+
+<p>Two independent gates, both re-run after the fixes landed. Nothing below is
+inferred from reading a diff.</p>
+
+<div class="grid">
+  <div class="g"><div class="t">Unit suite</div><div class="v pos">51 / 51</div>
+    <div class="d"><code>.venv/bin/python -m pytest worker/tests -q</code> →
+    <code>51 passed in 4.05s</code>. Was 6. New: 24 image, 17 camera, 7 faces,
+    3 validate. The camera and speaker-binding tests are synthetic and
+    dependency-free, so they run in CI without the assets.</div></div>
+  <div class="g"><div class="t">Acceptance harness — real assets</div>
+    <div class="v pos">32 / 32</div>
+    <div class="d">Re-runs the real detectors against the real 4000×4000 master
+    and the real clips. Synthetic fixtures cannot catch a detector that fails on
+    a real photograph; this can. Exit code 0.</div></div>
+</div>
+
+<h3>Image path — every ratio now keeps both faces</h3>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Ratio</th><th style="width:12%">faces found</th>
+  <th style="width:12%">faces kept</th><th>Chosen box (full-res)</th>
+  <th style="width:10%">Score</th><th style="width:13%">Independently verified</th></tr></thead>
+<tbody>
+<tr><td class="num">16:9</td><td class="num">2</td><td class="num pos">2</td>
+  <td class="num">[1143, 1467, 2000, 1125]</td><td class="num">0.4458</td>
+  <td class="pos">2 / 2 faces</td></tr>
+<tr><td class="num">1:1</td><td class="num">2</td><td class="num pos">2</td>
+  <td class="num">[980, 1510, 2000, 2000]</td><td class="num">0.4416</td>
+  <td class="pos">2 / 2 faces</td></tr>
+<tr class="hl"><td class="num"><b>9:16</b></td><td class="num">2</td>
+  <td class="num pos"><b>2</b></td><td class="num"><b>[1526, 1469, 1125, 2000]</b></td>
+  <td class="num pos"><b>0.4878</b></td><td class="pos"><b>2 / 2 faces</b></td></tr>
+<tr><td class="num">4:5</td><td class="num">2</td><td class="num pos">2</td>
+  <td class="num">[1224, 1469, 1600, 2000]</td><td class="num">0.4592</td>
+  <td class="pos">2 / 2 faces</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The “independently verified” column is the point: the harness recomputes face
+containment from its own ground-truth face boxes, using geometry the scorer never
+sees. It is not asking the scorer whether it succeeded.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Check</th><th style="width:26%">Before</th><th style="width:30%">After</th></tr></thead>
+<tbody>
+<tr><td>Faces detected on the master</td><td class="num neg">0</td>
+  <td class="num pos">2 — boxes (648,603,88,90) and (838,735,77,84) in analysis space</td></tr>
+<tr><td><code>face_mask</code> total</td><td class="num neg">0</td><td class="num pos">11 102</td></tr>
+<tr><td>9:16 candidate scores</td><td class="num neg">[0.084, 0.084, 0.082]</td>
+  <td class="num pos">[0.4878, 0.4874, 0.4856]</td></tr>
+<tr><td>9:16 faces in the chosen box</td><td class="num neg">0 of 2</td><td class="num pos">2 of 2</td></tr>
+<tr><td>Watermark band</td><td class="num neg">always zeroed</td>
+  <td class="num">zeroed only if every ratio can avoid it — here
+  <code>{16:9: True, 1:1: False, 9:16: False, 4:5: False}</code> → suppression off</td></tr>
+<tr><td>Full pipeline on the master</td><td class="num">4 outputs, 20/20 validations</td>
+  <td class="num pos">4 outputs, 20/20 validations, <code>faces_kept=2</code> on every one</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The 9:16 crop was rendered and inspected. It contains both women, both faces
+whole, the blood pool and the footprints that carry the story. The burned-in
+watermark is still visible — unavoidably so, because a 9:16 window cut from a
+square source must cross the middle band at every zoom level. The system now
+<em>knows and says</em> that rather than pretending it steered around it.</p>
+
+<h3>Video path — the two-speaker collapse is fixed</h3>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Clip</th><th style="width:26%">Before</th><th style="width:26%">After</th>
+  <th>What changed</th></tr></thead>
+<tbody>
+<tr><td><code>clip_a</code></td>
+  <td class="num neg">{'0': 9, '1': 3}<br><span class="fl">cx 0.55 and 0.64 — both the
+  right-hand person</span></td>
+  <td class="num pos">{'0': 9, '1': 7}<br><span class="fl">cx 0.55 and 0.35 — two
+  different people</span></td>
+  <td>Binding is now one-to-one, so a second speaker cannot be assigned to a face
+  already claimed by the first.</td></tr>
+<tr><td><code>clip_c</code></td>
+  <td class="num neg">{'0': 8, '1': 4}<br><span class="fl">cx 0.328 and 0.360 — both
+  the left-hand person</span></td>
+  <td class="num pos">{'0': 8, '1': 3}<br><span class="fl">cx 0.328 and 0.651 — two
+  different people</span></td>
+  <td>Same mechanism. Binding is scored on mouth-energy <em>contrast</em> (own
+  turn minus other turns) damped by presence, instead of an argmax against a
+  self-referential baseline.</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>This is the disqualifier that mattered. Before, on both clips, the pipeline
+knew which track each speaker was and picked the same human for both — so a
+speaker change moved the crop to the person who was <em>listening</em>.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Check</th><th style="width:20%">Before</th>
+  <th style="width:24%">After</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Frozen centre crop, first 3 s</td>
+  <td class="num neg">2.80 s / 4.40 s</td><td class="num pos">0 frames</td>
+  <td>Opening no longer starts pinned to <code>cx = 0.5</code></td></tr>
+<tr><td>Strategy is auditable per frame</td><td class="num neg">none</td>
+  <td class="num pos"><code>track</code> / <code>wide</code> / <code>hold</code></td>
+  <td><code>clip_a</code>: 237 / 384 / 135 · <code>clip_c</code>: 297 / 204 / 508</td></tr>
+<tr><td>Render ⇄ validator window agreement</td><td class="num neg">off by up to 208 px</td>
+  <td class="num pos">single shared conversion</td>
+  <td>Rendered <code>x</code> always in bounds and even</td></tr>
+<tr><td>Camera travel (<code>clip_c</code>)</td><td class="num">316 px</td>
+  <td class="num pos">929 px</td>
+  <td>And 536 distinct positions, so it is genuinely interpolated</td></tr>
+<tr><td>One Euro filter</td><td class="num neg">inert — clamp bound on 99.6% of
+  pans</td><td class="num pos">applied to the desired signal; clamp demoted to a
+  ceiling</td><td>Full traverse in 0.5 s instead of 12.6 s</td></tr>
+<tr><td>Overlapping diarization segments</td><td class="num neg">first-match wins</td>
+  <td class="num pos">longest turn claims contested time</td>
+  <td>6 overlapping pairs on the master</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Two things the harness caught that the unit tests could not</h3>
+
+<div class="callout co-amber">
+  <span class="h" style="color:var(--amber)">1. The reported number had to get worse</span>
+  <p>Active-speaker coverage is <strong>32.2%</strong> on <code>clip_a</code> and
+  <strong>30.2%</strong> on <code>clip_c</code> — essentially unchanged from the
+  32.5% measured before the fix. What changed is that the headline metric no longer
+  conditions on frames the system already got right. The old pipeline reported
+  <strong>92.3%</strong> while tracking a third of speech time; it now reports the
+  all-frames figure and states coverage next to it.</p>
+  <p style="margin-bottom:0">This is a deliberate trade. The number a judge sees is
+  lower and less flattering, and it is the number the code can actually defend.</p>
+</div>
+
+<div class="callout co-amber">
+  <span class="h" style="color:var(--amber)">2. Track consolidation is more
+  conservative than the brief implied</span>
+  <p style="margin-bottom:0">Merging same-person fragments to a fixed point reduced
+  the given master from 39 tracks to 39 — <strong>no merges fired</strong>. The
+  fragments belonging to one person are separated by 2.4–7.6 s (a full
+  reverse-shot), and neither a 7 s gap nor centre-distance alone justifies merging
+  them without an appearance descriptor. The
+  <em>11-and-8 fragmentation is therefore still present</em> in the raw track
+  list. What actually fixed the disqualifier is the one-to-one binding, not
+  consolidation. Reporting this rather than claiming a fragmentation fix that did
+  not happen.</p>
+</div>
+
+<div class="callout co-blue">
+  <span class="h" style="color:var(--blue)">On the degraded path</span>
+  <p style="margin-bottom:0">With no diarization — a Sarvam outage — coverage falls
+  to <strong>5.3%</strong> on <code>clip_a</code> and <strong>2.0%</strong> on
+  <code>clip_c</code>, and the ladder correctly spends its time in
+  <code>wide</code> and <code>hold</code> rather than pretending to track. The
+  mouth signal on these two clips is very weak: measured per-track contrast of
+  0.01–0.17 against a signal of ~0.17. The system now reports
+  <code>method="mouth-only"</code> in the decision log rather than quietly
+  producing a plausible-looking crop.</p>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════ 08 NOT FIXED ══ -->
+<h2><span class="n">08</span>Known gaps — stated, not hidden</h2>
+
+<p>This project already has an honest-failure philosophy: three validations on the
+video master fail in public (the 190 s reel exceeds Instagram's 90 s cap; two files
+exceed size limits). That is a genuine asset <em>provided it is applied
+uniformly</em>.</p>
+
+<div class="callout co-red">
+  <span class="h" style="color:var(--red)">The asymmetry is the risk</span>
+  <p style="margin-bottom:0">We proudly fail the reel on duration while passing an
+  image containing zero people 5/5. A judge who notices concludes the validator is a
+  decoration — and the three honest failures stop reading as rigour and start reading
+  as a demonstration of a failure state we already knew how to trigger. Credibility
+  in an honest-failure system comes from <b>uniformity</b>, not from the number of
+  failures.</p>
+</div>
+
+<div class="scroll">
+<table>
+<thead><tr><th style="width:34%">Gap</th><th style="width:10%">Severity</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Zero semantic validation rules — subjects preserved, faces unclipped, safe
+zones clear</td><td><span class="tag t-red">Disqualifier</span></td>
+  <td>Not started. The face boxes needed for it are <b>already computed and
+  discarded</b> by both paths, so it is arithmetic over data we already have — no new
+  model, no PyTorch.</td></tr>
+<tr><td>The validator does not gate anything — files upload and rows insert
+unconditionally; a red badge is the entire enforcement</td>
+  <td><span class="tag t-amber">High</span></td>
+  <td>Not started. Needs an explicit decision: block on failure, or present the
+  library as a review queue with an unmissable blocked state.</td></tr>
+<tr><td><code>validate_speaker</code>'s <code>pass</code> boolean and its per-segment
+breakdown are computed and thrown away</td><td><span class="tag t-amber">High</span></td>
+  <td>Being fixed in Track B (coverage reporting). Not yet surfaced in the UI.</td></tr>
+<tr><td>Trigger result discarded; no <code>trigger_failed</code> state; no reaper</td>
+  <td><span class="tag t-amber">Medium</span></td>
+  <td>Root cause identified; not started.</td></tr>
+<tr><td><code>job_entry.py:112-126</code> outside the <code>try</code> — boot crashes
+are invisible</td><td><span class="tag t-amber">Medium</span></td>
+  <td>Not started.</td></tr>
+<tr><td>Two-person shots occur in only 9.5% of frames — the headline requirement is
+barely exercised by the test assets</td><td><span class="tag t-amber">Medium</span></td>
+  <td>Noted. A purpose-built alternating-speaker clip would strengthen the demo
+  materially; the three cuts in <code>assets/test/</code> are shot/reverse-shot.</td></tr>
+<tr><td><code>db/schema.sql</code> referenced by <code>db.py:1-2</code> but absent
+from the repository</td><td><span class="tag t-blue">Low</span></td>
+  <td>Not started. A judge auditing “machine-readable spec” will find
+  <code>spec/spec.json</code> committed and the database schema undocumented.</td></tr>
+<tr><td>Two citation errors in <code>HANDOVER.md</code></td>
+  <td><span class="tag t-blue">Low</span></td>
+  <td>Identified, not started.</td></tr>
+<tr><td>If Sarvam fails, mouth-only leaves 97.4% of frames untracked</td>
+  <td><span class="tag t-blue">Low</span></td>
+  <td>Accepted. The fallback is honest and reported, and GMI covers the VLM path;
+  Sarvam has no equivalent second source within budget.</td></tr>
+</tbody>
+</table>
+</div>
+
+<footer>
+  <p><strong>Method.</strong> Every measurement in this report was produced by
+  re-executing the shipped code against the real assets, or by template-matching
+  rendered output frames back into their source to recover ground truth. Claims
+  marked as inference or speculation are labelled as such in the underlying analysis.
+  Where a stated belief could not be confirmed — including two corrections to the
+  original bug report and three to <code>HANDOVER.md</code> — it is recorded rather
+  than quietly dropped.</p>
+  <p>Nothing in this document contains credentials, presigned URLs, or key material.</p>
+</footer>
+
+</div>
+</body>
+</html>

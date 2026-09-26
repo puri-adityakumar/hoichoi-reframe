@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getJob, listOutputsByJob } from "@/db";
+import { getJob, getMaster, listOutputsByJob } from "@/db";
 
 export async function GET(
   _req: Request,
@@ -11,8 +11,14 @@ export async function GET(
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
   try {
-    const outputs = await listOutputsByJob(id);
-    return NextResponse.json({ job, outputs });
+    const [outputs, master] = await Promise.all([
+      listOutputsByJob(id),
+      getMaster(job.master_id).catch(() => null),
+    ]);
+    return NextResponse.json({
+      job: { ...job, master_title: master?.title ?? null },
+      outputs,
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "DB error" },

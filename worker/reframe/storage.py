@@ -40,6 +40,11 @@ def upload_file(path: str | Path, key: str) -> str:
     return key
 
 
+def download_file(key: str, path: str | Path) -> str:
+    _s3_client().download_file(_bucket(), key, str(path))
+    return str(path)
+
+
 def presign_get(key: str, exp: int = 3600) -> str:
     s3 = _s3_client()
     return s3.generate_presigned_url(

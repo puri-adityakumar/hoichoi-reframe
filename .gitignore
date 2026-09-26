@@ -1,6 +1,6 @@
 .env*
 !.env.example
-assets/
+/assets/
 node_modules/
 .venv/
 __pycache__/
@@ -9,3 +9,4 @@ __pycache__/
 work/
 .next/
 models/
+*.tsbuildinfo

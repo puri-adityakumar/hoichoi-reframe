@@ -9,6 +9,7 @@ export async function GET(req: Request) {
     const outputs = await listLibrary({
       platform: url.searchParams.get("platform") || undefined,
       masterId: url.searchParams.get("masterId") || undefined,
+      kind: url.searchParams.get("kind") || undefined,
     });
     return NextResponse.json({ outputs });
   } catch (e) {

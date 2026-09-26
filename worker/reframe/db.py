@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 import psycopg
 
 from worker.reframe.config import load_config
+from worker.reframe.preview import assert_image_preview
 
 _conn: Optional[psycopg.Connection] = None
 
@@ -144,6 +145,10 @@ def get_master(master_id: Any) -> dict[str, Any]:
 def insert_output(job_id: Any, master_id: Any, platform: str, ratio: str, kind: str,
                   s3_key: str, preview_key: Optional[str],
                   speaker_pct: Optional[float]) -> Any:
+    # The web renders preview_key in an <img>. A video there is a broken image,
+    # so reject it here rather than letting a bad row reach the UI.
+    if preview_key is not None:
+        assert_image_preview(preview_key)
     return _one(
         """
         INSERT INTO outputs (job_id, master_id, platform, ratio, kind, s3_key, preview_key,
@@ -153,6 +158,12 @@ def insert_output(job_id: Any, master_id: Any, platform: str, ratio: str, kind: 
         """,
         (str(job_id), str(master_id), platform, ratio, kind, s3_key, preview_key, speaker_pct),
     )
+
+
+def set_output_preview_key(output_id: Any, preview_key: str) -> None:
+    assert_image_preview(preview_key)
+    _exec("UPDATE outputs SET preview_key = %s WHERE id = %s::uuid",
+          (preview_key, str(output_id)))
 
 
 def insert_validations(output_id: Any, rows: list[dict[str, Any]]) -> None:

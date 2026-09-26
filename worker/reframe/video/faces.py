@@ -1,5 +1,7 @@
 """Face analysis: MediaPipe FaceLandmarker on a downscaled 5 fps stream,
-linked into tracks by IoU. Analysis-only brightening (output is untouched)."""
+linked into tracks by IoU, then consolidated (see consolidate_tracks: IoU
+linking alone shattered two people into 11 and 8 fragments on the 190 s master).
+Analysis-only brightening (output is untouched)."""
 from __future__ import annotations
 
 import math
@@ -22,6 +24,12 @@ MAX_GAP_FRAMES = 2  # 0.4 s at 5 fps
 CROSS_CUT_FRAMES = 15  # allow re-link across a shot cut within ~3 s
 CROSS_CUT_CENTER = 0.18  # normalized center distance to bridge across a cut
 NUM_FACES = 6
+
+# ---- track consolidation (see consolidate_tracks) ------------------------
+MERGE_GAP_S = 2.0  # same person may vanish for a blink / head turn / a short
+# occlusion; 10 analysis frames, ~3x the 0.6 s window IoU linking allows
+MERGE_DX = 0.08  # normalized centre-x distance (~3% of the frame, ~61 px)
+MERGE_AREA = 0.55  # 0.55-1.8x box-area ratio
 
 # MediaPipe FaceMesh landmark indices
 _LIP_INNER_TOP, _LIP_INNER_BOTTOM = 13, 14
@@ -69,6 +77,92 @@ def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, flo
     inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
     union = aw * ah + bw * bh - inter
     return inter / union if union > 0 else 0.0
+
+
+# ------------------------------------------------------------ consolidation --
+def _summary(track: dict[str, Any]) -> tuple[float, float, float, float]:
+    """(centre-x, area, t_start, t_end) of a track, meaned over its frames."""
+    frames = track["frames"]
+    cx = sum(f["box"][0] + f["box"][2] / 2 for f in frames) / len(frames)
+    area = sum(f["box"][2] * f["box"][3] for f in frames) / len(frames)
+    return cx, area, frames[0]["t"], frames[-1]["t"]
+
+
+def _mergeable(a: tuple[float, float, float, float],
+               b: tuple[float, float, float, float]) -> bool:
+    """True if two tracks are plausibly the SAME person.
+
+    IoU linking only ever matches consecutive analysis frames, so a face that
+    blinks, turns away or is hidden by a shot cut mints a brand new track and the
+    abandoned one is never re-acquired. Measured on the 190 s master: 461
+    detections across 43 tracks, and clustering the 19 speaker-eligible tracks by
+    mean face centre-x gave exactly two people shattered into 11 and 8
+    fragments. Consequences downstream: speaker 0 spoke for 42.8 s but got bound
+    to a track that existed for 8 frames (1.4 s), and on clip_a/clip_c both
+    diarized speakers were mapped onto the SAME physical person. Do not revert
+    this pass without re-measuring the fragment count.
+
+    The three tests, all required:
+      * time: non-overlapping (or touching) with a gap <= MERGE_GAP_S
+      * position: mean centre-x within MERGE_DX in normalized frame coords
+      * scale: comparable mean box area (ratio within MERGE_AREA .. 1/MERGE_AREA)
+    There is no appearance descriptor in this pipeline, so MERGE_GAP_S is
+    deliberately short: a fragment separated by a full reverse-shot (measured
+    2.4-7.6 s of absence on the test clips) is NOT merged, because a 7 s gap is
+    not evidence of identity and merging on it would happily glue two people who
+    happen to sit at similar x. Those long-gap fragments are handled downstream
+    instead, by duration-aware speaker binding (see video/speaker.py).
+    """
+    a_cx, a_area, a_t0, a_t1 = a
+    b_cx, b_area, b_t0, b_t1 = b
+    gap = max(a_t0, b_t0) - min(a_t1, b_t1)  # negative when they interleave
+    if gap > MERGE_GAP_S:
+        return False
+    if abs(a_cx - b_cx) > MERGE_DX:
+        return False
+    ratio = a_area / max(1e-6, b_area)
+    return MERGE_AREA <= ratio <= 1.0 / MERGE_AREA
+
+
+def consolidate_tracks(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Iteratively merge tracks that are plausibly the same person.
+
+    Pure function on the track dicts: the per-frame {t, box, mouth} shape is
+    untouched, so nothing downstream changes, and the input is not mutated (the
+    frames are copied, because the merge appends to them). Merge rounds run to a
+    fixed point (a merge changes the summary, which can enable a further merge)
+    and the earliest fragment's id wins, so ids stay stable and unique.
+    """
+    groups: list[dict[str, Any]] = [
+        {"id": tr["id"], "frames": [dict(f) for f in tr["frames"]]} for tr in tracks]
+
+    def rekey(g: dict[str, Any]) -> None:
+        fr = sorted(g["frames"], key=lambda f: f["t"])
+        ids = [f.get("tid", g["id"]) for f in fr]
+        g["frames"] = [{"t": f["t"], "box": tuple(f["box"]), "mouth": f["mouth"]} for f in fr]
+        g["id"] = min(ids)
+
+    changed = True
+    while changed:
+        changed = False
+        summaries = [_summary(g) for g in groups]
+        for i in range(len(groups)):
+            for j in range(i + 1, len(groups)):
+                if not _mergeable(summaries[i], summaries[j]):
+                    continue
+                keep_i, drop_i = sorted((i, j), key=lambda k: -len(groups[k]["frames"]))
+                keep, dropped = groups[keep_i], groups[drop_i]
+                for f in dropped["frames"]:
+                    f["tid"] = f.get("tid", dropped["id"])
+                keep["frames"].extend(dropped["frames"])
+                groups.pop(drop_i)
+                rekey(keep)
+                summaries = [_summary(g) for g in groups]
+                changed = True
+                break
+            if changed:
+                break
+    return [{"id": g["id"], "frames": g["frames"]} for g in groups]
 
 
 def _landmark_pts(lm: Any) -> np.ndarray:
@@ -185,11 +279,12 @@ def analyze_faces(video_path: str | Path, model_path: Path | None = None) -> dic
                 open_tracks[tid] = (idx - 1, box)
     cap.release()
 
+    merged = consolidate_tracks([
+        {"id": tid, "frames": tracks[tid]} for tid in sorted(tracks, key=lambda k: -len(tracks[k]))
+    ])
     return {
         "fps": ANALYSIS_FPS,
         "brightened_frames": brightened,
-        "tracks": [
-            {"id": tid, "frames": tracks[tid]}
-            for tid in sorted(tracks, key=lambda k: -len(tracks[k]))
-        ],
+        # longest first, as before; consolidation only removes fragments
+        "tracks": sorted(merged, key=lambda tr: -len(tr["frames"])),
     }

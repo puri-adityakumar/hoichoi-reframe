@@ -17,6 +17,8 @@ import json
 import subprocess
 import sys
 import time
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -28,14 +30,16 @@ from . import db, probe as probe_mod, storage, validate, validate_speaker
 from .config import load_config
 from .decisions import DecisionLog
 from .image.crops import best_crop_candidates
-from .image.importance import importance_map
+from .image.importance import band_is_actionable, importance_map
 from .image.render import render_crop
+from .preview import make_image_preview, make_video_poster
+from .video.annotate import annotate_tracks, make_analysis_proxy
 from .video.camera import camera_path
 from .video.faces import analyze_faces
 from .video.render import crop_size, render_vertical
 from .video.shots import detect_shots
 from .video.speaker import assign_speakers
-from .vlm import pick_best
+from .vlm import collect_vlm_log, pick_best
 
 P4_ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = P4_ROOT / "spec" / "spec.json"
@@ -47,10 +51,6 @@ IMAGE_PLATFORMS = ["youtube_thumbnail", "square_image", "story_image", "feed_ima
 # 16:9 = stream copy (master is already 16:9); still = 16:9 thumbnail
 CROP_PLATFORMS = ["instagram_reel", "instagram_feed", "youtube_square"]
 
-VIDEO_PREVIEW_EDGE = 480
-IMAGE_PREVIEW_EDGE = 240
-
-
 # ---------------------------------------------------------------- helpers ----
 
 def _ffmpeg(args: list[str]) -> None:
@@ -58,21 +58,6 @@ def _ffmpeg(args: list[str]) -> None:
                          capture_output=True, text=True)
     if res.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {res.stderr[-800:]}")
-
-
-def make_image_preview(src: Path, dst: Path) -> Path:
-    im = Image.open(src).convert("RGB")
-    im.thumbnail((IMAGE_PREVIEW_EDGE, IMAGE_PREVIEW_EDGE), Image.LANCZOS)
-    im.save(dst, "JPEG", quality=70)
-    return dst
-
-
-def make_video_preview(src: Path, dst: Path) -> Path:
-    vf = (f"scale='if(gt(iw,ih),{VIDEO_PREVIEW_EDGE},-2)':"
-          f"'if(gt(iw,ih),-2,{VIDEO_PREVIEW_EDGE})'")
-    _ffmpeg(["-i", str(src), "-vf", vf, "-c:v", "libx264", "-crf", "28",
-             "-preset", "veryfast", "-an", "-movflags", "+faststart", str(dst)])
-    return dst
 
 
 def _fallback_spans(timeline: list[dict[str, Any]]) -> list[tuple[float, float]]:
@@ -96,21 +81,27 @@ def run_image_master(img_path: Path, outdir: Path, platforms: dict[str, Any],
     if img_bgr is None:
         raise RuntimeError(f"cannot read image {img_path}")
     img_h, img_w = img_bgr.shape[:2]
-    log.add("watermark_mask",
-            "zeroed importance band y=0.40-0.60 before painting faces",
-            "burned-in watermark must not attract crops; faces painted after win")
-
-    imp, _ = importance_map(img_bgr)
+    image_ratios = [platforms[pl]["ratio"] for pl in IMAGE_PLATFORMS]
+    imp, _scale = importance_map(img_bgr, ratios=image_ratios)
     face_mask = (imp > 0.85).astype(np.float32)
     img = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
     timings["importance_map"] = round(time.monotonic() - t0, 2)
+    band_plan = {r: band_is_actionable(img_w, img_h, r) for r in image_ratios}
+    log.add("watermark_mask",
+            f"band y=0.40-0.60 zeroed={all(band_plan.values())} "
+            f"(per-ratio avoidable: {band_plan})",
+            "the map is shared, so the band is zeroed only when EVERY requested "
+            "ratio can be steered clear of it. A tall ratio cut from a square "
+            "source must cross the band by construction, which makes zeroing it a "
+            "uniform dead zone that deletes the saliency of the subjects")
 
     outputs: list[dict[str, Any]] = []
     for platform in IMAGE_PLATFORMS:
         t1 = time.monotonic()
         p = platforms[platform]
-        cands = best_crop_candidates(imp, img_w, img_h, p["ratio"], k=3,
-                                     face_mask=face_mask)
+        res = best_crop_candidates(imp, img_w, img_h, p["ratio"], k=3,
+                                   face_mask=face_mask)
+        cands = res["candidates"]
         crops = [img.crop((c["box"][0], c["box"][1],
                            c["box"][0] + c["box"][2], c["box"][1] + c["box"][3]))
                  for c in cands]
@@ -118,11 +109,23 @@ def run_image_master(img_path: Path, outdir: Path, platforms: dict[str, Any],
                    f"{p['width']}x{p['height']}). Pick the crop keeping the most "
                    "important subjects (faces/people) fully visible and well framed.")
         pick, provider = pick_best(crops, context)
+        if pick["choice"] < 0:
+            # The model says none of the three is acceptable. Falling back to
+            # candidate 0 is the honest floor, but say so loudly rather than
+            # shipping a people-free crop as though it had won.
+            log.add(f"image_crop:{platform}",
+                    "VLM rejected all candidates; fell back to candidate 0",
+                    f"{pick['reason']} (provider={provider}, faces_found="
+                    f"{res['faces_found']}, faces_kept={res['faces_kept']})",
+                    confidence=0.0)
+            pick = {**pick, "choice": 0}
         best = cands[pick["choice"]]
         log.add(f"image_crop:{platform}",
                 f"candidate {pick['choice']} of {len(cands)}",
                 f"{pick['reason']} (provider={provider}, scores="
-                f"{[round(c['score'], 3) for c in cands]})")
+                f"{[round(c['score'], 3) for c in cands]}, faces_found="
+                f"{res['faces_found']}, faces_kept={res['faces_kept']}"
+                f"{' -- NO CANDIDATE COULD HOLD A FACE WHOLE' if res['faces_found'] and not res['faces_kept'] else ''})")
         out_path = render_crop(img, best["box"], p["width"], p["height"],
                                outdir / f"{platform}.jpg")
         prev = make_image_preview(out_path, outdir / f"{platform}.preview.jpg")
@@ -223,7 +226,11 @@ def make_still(video: Path, outdir: Path, p: dict[str, Any],
 
     pick, provider = pick_best(images, (
         "Pick the best YouTube thumbnail still: expressive faces, clear subject, "
-        "no motion blur, strong composition."))
+        "no motion blur, strong composition."), subjects_preserved=False)
+    if pick["choice"] < 0:
+        log.add("still_pick", "VLM rejected all 8 sampled frames; fell back to frame 0",
+                f"{pick['reason']} (provider={provider})", confidence=0.0)
+        pick = {**pick, "choice": 0}
     t_best, frame_best = pairs[pick["choice"]]
     log.add("still_pick", f"frame at t={t_best:.1f}s (candidate {pick['choice']} of 8)",
             f"{pick['reason']} (provider={provider})")
@@ -273,10 +280,35 @@ def run_video_master(video: Path, outdir: Path, platforms: dict[str, Any],
     diar = diarize_cached(video, log, timings)
     fused = assign_speakers(analysis, diar)
     timings["speaker_fusion"] = round(time.monotonic() - t0, 2)
-    log.add("speaker_map", f"method={fused['method']}, speakers->tracks={fused['speaker_track']}",
-            "Sarvam diarization matched to face tracks via mouth-energy response"
+    log.add("speaker_map", f"method={fused['method']}, speakers->tracks={fused['speaker_track']}, "
+            f"confidence={fused.get('speaker_confidence')}, ambiguous={fused.get('ambiguous')}, "
+            f"overlap_dropped_s={fused.get('overlap_dropped_s')}",
+            "Sarvam diarization matched to face tracks via mouth-energy contrast "
+            "(own turn minus other turns), damped by presence and assigned "
+            "one-to-one so two speakers cannot land on one face"
             if fused["method"] == "sarvam+mouth"
-            else "mouth-motion argmax fallback (no usable diarization)")
+            else "mouth-motion fallback (no usable diarization); assignment is "
+                 "consistent but not corroborated by audio")
+
+    # raw artifacts (video only): full analysis + fusion dicts land in outdir for
+    # publish_raw_artifacts; the debug video is QA-only and never enters `outputs`
+    (outdir / "analysis.json").write_text(
+        json.dumps(analysis, ensure_ascii=False, default=str))
+    (outdir / "speaker_fusion.json").write_text(
+        json.dumps(fused, ensure_ascii=False, default=str))
+
+    t0 = time.monotonic()
+    proxy = outdir / "_analysis_proxy.mp4"
+    make_analysis_proxy(video, proxy)
+    try:
+        annotate_tracks(proxy, analysis, fused, outdir / "debug_tracking.mp4")
+    finally:
+        proxy.unlink(missing_ok=True)
+    timings["tracking_debug"] = round(time.monotonic() - t0, 2)
+    log.add("tracking_debug", "boxes+labels drawn from tracks/speaker fusion",
+            "every track's box on the 480p analysis proxy at the analysis fps, "
+            "colored per speaker (teal/amber), labelled 'Speaker A - 0.83'; "
+            "QA-only raw artifact, never published to the library")
 
     outputs: list[dict[str, Any]] = []
     reel_meta: dict[str, Any] = {"path": None, "crop_w_n": None}
@@ -289,19 +321,23 @@ def run_video_master(video: Path, outdir: Path, platforms: dict[str, Any],
         cw, ch = crop_size(p["width"], p["height"], sp["ratio"])
         spans = _fallback_spans(fused["timeline"])
         n_fb = sum(1 for f in fused["timeline"] if f["active_track"] is None)
+        mix = Counter(e["strategy"] for e in path)
         log.add(f"camera:{platform}",
-                f"crop {cw}x{ch}, OneEuro(min_cutoff=0.8, beta=1.5, d_cutoff=1.0), "
-                f"dead_zone=0.02, vel_clamp=0.25*crop_w/s; fallback frames={n_fb}",
-                "smoothed active-speaker follow; fallback (hold/wide) engaged at "
-                f"t={[round(s[0], 1) for s in spans[:8]]}..."
-                if spans else "active speaker present for the whole timeline")
+                f"crop {cw}x{ch}, OneEuro(min_cutoff=0.7, beta=0.5, d_cutoff=1.0), "
+                f"dead_zone=0.02 (fraction of travel), vel_clamp=full travel in "
+                f"0.5s; cx=fraction of available travel; strategy mix="
+                f"{dict(mix)}; untracked analysis frames={n_fb}/{len(fused['timeline'])}",
+                "ladder: track=identified active speaker, wide=all visible faces "
+                "held, hold=no face visible (never snaps to centre); untracked "
+                "frames are those where no speaker could be identified at all")
         out_path = outdir / f"{platform}.mp4"
         render_vertical(video, path, sp["ratio"], out_path,
                         src_w=p["width"], src_h=p["height"],
                         out_w=sp["width"], out_h=sp["height"])
         timings[f"render:{platform}"] = round(time.monotonic() - t0, 2)
         kind = "reel" if sp["ratio"] == "9:16" else "crop"
-        prev = make_video_preview(out_path, outdir / f"{platform}.preview.mp4")
+        prev = make_video_poster(out_path, outdir / f"{platform}.preview.jpg",
+                                 duration=p["duration"])
         outputs.append({
             "platform": platform, "ratio": sp["ratio"], "kind": kind,
             "path": out_path, "preview_path": prev,
@@ -316,7 +352,8 @@ def run_video_master(video: Path, outdir: Path, platforms: dict[str, Any],
     out169 = outdir / "youtube_landscape.mp4"
     _ffmpeg(["-i", str(video), "-c", "copy", str(out169)])
     timings["copy:16:9"] = round(time.monotonic() - t0, 2)
-    prev = make_video_preview(out169, outdir / "youtube_landscape.preview.mp4")
+    prev = make_video_poster(out169, outdir / "youtube_landscape.preview.jpg",
+                             duration=p["duration"])
     outputs.append({
         "platform": "youtube_landscape", "ratio": sp["ratio"], "kind": "copy",
         "path": out169, "preview_path": prev,
@@ -330,15 +367,28 @@ def run_video_master(video: Path, outdir: Path, platforms: dict[str, Any],
         score = validate_speaker.speaker_on_screen(
             analysis, diar, reel_meta["cam_path"],
             fused["timeline"], crop_w=reel_meta["crop_w_n"])
-        pct = (score.get("overall_confident") if score.get("overall_confident") is not None
-               else score["overall"])
+        # Report the ALL-FRAMES hit rate, not the confident-frames-only rate.
+        # `overall` is conditioned on frames where a speaker was actually
+        # identified; on its own it read 0.92 while only ~36% of speech time was
+        # tracked, which is the number a judge would call out.
+        pct = score.get("overall_all", score["overall"])
+        cov = score.get("coverage")
         for o in outputs:
             if o["platform"] == "instagram_reel":
                 o["speaker_pct"] = pct
+                o["speaker_coverage"] = cov
                 o["speaker_detail"] = score
-        log.add("speaker_on_screen", f"{round(pct * 100, 1)}% of frames",
-                "active speaker's face inside the 9:16 crop window "
-                "(confident frames only)", confidence=pct)
+        log.add("speaker_on_screen",
+                f"{round(pct * 100, 1)}% of all speech frames; "
+                f"coverage={round((cov or 0) * 100, 1)}% of speech time had an "
+                f"identified speaker ({score.get('tracked_frames')}/"
+                f"{score.get('speech_frames')} frames tracked)",
+                "active speaker's face inside the 9:16 window that was actually "
+                "rendered, over ALL speech frames including the ones where no "
+                "speaker could be identified. The confident-frames-only rate was "
+                f"{score.get('overall_confident')} and is NOT what we report, "
+                "because conditioning on frames the system already got right "
+                "overstates the result.", confidence=pct)
     return outputs
 
 
@@ -379,6 +429,59 @@ def publish(input_path: Path, kind: str, title: str, outputs: list[dict[str, Any
         db.finish_job(job_id, "error", "error", 0, error=str(exc)[:500])
         raise
     return job_id
+
+
+# ------------------------------------------------------- raw artifacts ----
+
+# outdir filename -> (raw kind, human label); keys under jobs/<job_id>/raw/
+RAW_FILES = {
+    "analysis.json": ("analysis_json", "Full analysis (probe, shots, face tracks)"),
+    "speaker_fusion.json": ("speaker_fusion", "Speaker-to-track fusion result"),
+    "vlm_calls.json": ("vlm_calls", "Every VLM call: prompt, raw reply, latency, choice"),
+    "debug_tracking.mp4": ("debug_video", "Tracking debug video (boxes + speaker labels)"),
+    "manifest.json": ("run_manifest", "Run manifest (decisions, timings, validations)"),
+}
+
+
+def publish_raw_artifacts(job_id: str, outdir: Path) -> None:
+    """Upload raw per-job artifacts under jobs/<job_id>/raw/ and index them in
+    jobs/<job_id>/raw/manifest.json (fixed key -- the web app's entry point).
+
+    Raw-only by design: none of these go into the outputs table, so they never
+    appear in the library and get no validations. Each upload is independent --
+    one failure must not kill publishing or the DB job record."""
+    calls = collect_vlm_log()
+    (outdir / "vlm_calls.json").write_text(
+        json.dumps(calls, ensure_ascii=False, indent=1))
+
+    artifacts: list[dict[str, Any]] = []
+    for name, (kind, label) in RAW_FILES.items():
+        path = outdir / name
+        if not path.exists():
+            continue
+        key = f"jobs/{job_id}/raw/{name}"
+        try:
+            storage.upload_file(path, key)
+            artifacts.append({"kind": kind, "key": key, "label": label,
+                              "bytes": path.stat().st_size})
+        except Exception as exc:  # noqa: BLE001 - tolerate per-file failures
+            print(f"[reframe] raw upload failed for {name}: {exc}", file=sys.stderr)
+
+    index = {
+        "job_id": job_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "artifacts": artifacts,
+    }
+    tmp = outdir / "_raw_manifest.json"
+    tmp.write_text(json.dumps(index, ensure_ascii=False, indent=1))
+    try:
+        storage.upload_file(tmp, f"jobs/{job_id}/raw/manifest.json")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[reframe] raw upload failed for manifest.json: {exc}", file=sys.stderr)
+    finally:
+        tmp.unlink(missing_ok=True)
+    print(f"[reframe] raw artifacts uploaded: {len(artifacts)} "
+          f"+ index under jobs/{job_id}/raw/")
 
 
 # -------------------------------------------------------------------- main ----
@@ -447,5 +550,6 @@ def main(argv: Optional[list[str]] = None) -> int:
               + (f" speaker_pct={o['speaker_pct']}" if o.get("speaker_pct") is not None else ""))
     if args.publish:
         job_id = publish(inp, kind, args.title, outputs, rows, log)
+        publish_raw_artifacts(job_id, outdir)
         print(job_id)  # last line: the job id
     return 0

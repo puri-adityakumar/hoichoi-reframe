@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server";
-import { createJob } from "@/db";
+import { createJob, listJobs } from "@/db";
 import { triggerReframeWorker } from "@/blaxel";
+
+export async function GET() {
+  try {
+    const jobs = await listJobs();
+    return NextResponse.json({ jobs });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "DB error" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: Request) {
   let masterId: string | undefined;

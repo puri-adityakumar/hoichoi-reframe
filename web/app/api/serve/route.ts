@@ -11,7 +11,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "key query param required" }, { status: 400 });
   }
   // Path-traversal guard: only serve objects under known prefixes.
-  if (!key.startsWith("masters/") && !key.startsWith("outputs/")) {
+  // jobs/<uuid>/raw/ is the worker's QA-artifact area (analysis JSON, VLM
+  // call log, tracking debug video); nothing else under jobs/ is servable.
+  const rawOk = /^jobs\/[0-9a-f-]{36}\/raw\//.test(key);
+  if (!rawOk && !key.startsWith("masters/") && !key.startsWith("outputs/")) {
     return NextResponse.json({ error: "forbidden key" }, { status: 403 });
   }
   try {

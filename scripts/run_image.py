@@ -36,8 +36,9 @@ def main() -> None:
     img_h, img_w = img_bgr.shape[:2]
     print(f"master {img_w}x{img_h}")
 
-    imp, scale = importance_map(img_bgr)
-    # face mask = importance > threshold where it looks like a face peak
+    imp, scale = importance_map(img_bgr, ratios=[spec[n]["ratio"] for n in IMAGE_RATIOS])
+    # face mask = the painted faces only (saliency is capped at 0.5, so >= 0.85
+    # isolates the face cores from the halo)
     face_mask = (imp > 0.85).astype(np.float32)
     img = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
 
@@ -47,7 +48,9 @@ def main() -> None:
         p = spec[name]
         ratio = p["ratio"]
         out_w, out_h = p["width"], p["height"]
-        cands = best_crop_candidates(imp, img_w, img_h, ratio, k=3, face_mask=face_mask)
+        res = best_crop_candidates(imp, img_w, img_h, ratio, k=3, face_mask=face_mask)
+        cands = res["candidates"]
+        print(f"{name}: faces_found={res['faces_found']} faces_kept={res['faces_kept']}")
         crops = [img.crop((c["box"][0], c["box"][1],
                            c["box"][0] + c["box"][2], c["box"][1] + c["box"][3])) for c in cands]
         context = (
@@ -57,6 +60,9 @@ def main() -> None:
             "must not dominate; prefer crops keeping both faces fully visible."
         )
         pick, provider = pick_best(crops, context)
+        if pick["choice"] < 0:  # the model rejected every candidate; say so, do not coerce
+            print(f"{name}: VLM rejected all candidates ({pick['reason']}); using best-scoring")
+            pick = {"choice": 0, "reason": pick["reason"]}
         best = cands[pick["choice"]]
         out_path = OUT_DIR / f"{name}.jpg"
         render_crop(img, best["box"], out_w, out_h, out_path)
@@ -69,6 +75,8 @@ def main() -> None:
         max_size_ok = size_bytes <= p["max_size_mb"] * 1024 * 1024
         report[name] = {
             "chosen_box": best["box"],
+            "faces_found": res["faces_found"],
+            "faces_kept": res["faces_kept"],
             "candidate_scores": [round(c["score"], 4) for c in cands],
             "vlm_choice": pick["choice"],
             "vlm_reason": pick["reason"],

@@ -24,7 +24,9 @@ for _p in (APP_ROOT, APP_ROOT.parent):  # container: /app, local: P4 root
 from worker.reframe import db, storage, validate  # noqa: E402
 from worker.reframe.config import load_config  # noqa: E402
 from worker.reframe.decisions import DecisionLog  # noqa: E402
-from worker.reframe.main import run_image_master, run_video_master  # noqa: E402
+from worker.reframe.main import (  # noqa: E402
+    publish_raw_artifacts, run_image_master, run_video_master,
+)
 
 SPEC_PATH = APP_ROOT / "spec" / "spec.json"
 TMP_BASE = Path(os.environ.get("REFRAME_TMP", "/tmp/reframe"))
@@ -162,6 +164,12 @@ def run_job(job_id: str, master_id: str) -> None:
                 oid, [r for r in rows if r["output"] == Path(o["path"]).name])
         db.insert_decisions(job_id, None, log.to_list())
         db.set_job(job_id, "done", "done", 100)
+        # raw artifacts (analysis, fusion, VLM calls, debug video, run
+        # manifest) ride the same path; never allowed to fail the job
+        try:
+            publish_raw_artifacts(job_id, outdir)
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
         print(f"[job_entry] job {job_id} done", flush=True)
     except Exception as exc:  # noqa: BLE001
         traceback.print_exc()

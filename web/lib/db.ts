@@ -137,6 +137,37 @@ export async function getJob(id: string): Promise<Job | null> {
   return rows[0] ?? null;
 }
 
+export type JobListRow = Job & {
+  master_title: string | null;
+  master_kind: string | null;
+  output_count: number;
+  passed_count: number;
+};
+
+export async function listJobs(limit = 20): Promise<JobListRow[]> {
+  return q<JobListRow>(
+    `select j.id, j.master_id, j.status, j.stage, j.progress, j.error, j.created_at, j.finished_at,
+            m.title as master_title, m.kind as master_kind,
+            coalesce(o.output_count, 0) as output_count,
+            coalesce(o.passed_count, 0) as passed_count
+     from jobs j
+     left join masters m on m.id = j.master_id
+     left join (
+       select job_id,
+              count(*) as output_count,
+              count(*) filter (where coalesce(v.all_passed, true)) as passed_count
+       from outputs
+       left join (
+         select output_id, bool_and(passed) as all_passed from validations group by output_id
+       ) v on v.output_id = outputs.id
+       group by job_id
+     ) o on o.job_id = j.id
+     order by j.created_at desc
+     limit $1`,
+    [limit]
+  );
+}
+
 export async function listOutputsByJob(jobId: string): Promise<Output[]> {
   return q<Output>(
     `select id, job_id, master_id, platform, ratio, kind, s3_key, preview_key,
@@ -155,11 +186,16 @@ export async function listOutputsByMaster(masterId: string): Promise<Output[]> {
   );
 }
 
-export type LibraryRow = Output & { master_title: string | null; all_passed: boolean };
+export type LibraryRow = Output & {
+  master_title: string | null;
+  master_kind: string | null;
+  all_passed: boolean;
+};
 
 export async function listLibrary(filter?: {
   platform?: string;
   masterId?: string;
+  kind?: string;
 }): Promise<LibraryRow[]> {
   const where: string[] = [];
   const params: unknown[] = [];
@@ -171,11 +207,16 @@ export async function listLibrary(filter?: {
     params.push(filter.masterId);
     where.push(`o.master_id = $${params.length}`);
   }
+  if (filter?.kind) {
+    params.push(filter.kind);
+    where.push(`m.kind = $${params.length}`);
+  }
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
   return q<LibraryRow>(
     `select o.id, o.job_id, o.master_id, o.platform, o.ratio, o.kind, o.s3_key,
             o.preview_key, o.speaker_on_screen_pct, o.created_at,
             m.title as master_title,
+            m.kind as master_kind,
             coalesce(v.all_passed, true) as all_passed
      from outputs o
      left join masters m on m.id = o.master_id
